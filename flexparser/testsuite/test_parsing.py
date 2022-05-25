@@ -18,7 +18,6 @@ class CannotParseToFloat(fp.ParsingError):
 
 @dataclass(frozen=True)
 class Open(fp.ParsedStatement):
-
     @classmethod
     def from_string(cls, s: str, config):
         if s == "@begin":
@@ -28,7 +27,6 @@ class Open(fp.ParsedStatement):
 
 @dataclass(frozen=True)
 class Close(fp.ParsedStatement):
-
     @classmethod
     def from_string(cls, s: str, config):
         if s == "@end":
@@ -55,7 +53,7 @@ class EqualFloat(fp.ParsedStatement):
     b: float
 
     @classmethod
-    def from_string(cls, s: str, config) -> fp.FromString['EqualFloat']:
+    def from_string(cls, s: str, config) -> fp.FromString["EqualFloat"]:
         if "=" not in s:
             return None
 
@@ -95,12 +93,18 @@ def test_parse_equal_float():
 
 
 def test_consume_equal_float():
-    f = lambda s: fp.SequenceIterator(iter(((3, 4, s), )))
-    assert EqualFloat.consume(f("a = 3.1"), None) == EqualFloat("a", 3.1).set_line_col(3, 4)
+    f = lambda s: fp.SequenceIterator(iter(((3, 4, s),)))
+    assert EqualFloat.consume(f("a = 3.1"), None) == EqualFloat("a", 3.1).set_line_col(
+        3, 4
+    )
     assert EqualFloat.consume(f("a"), None) is None
 
-    assert EqualFloat.consume(f("%a = 3.1"), None) == NotAValidIdentifier("%a").set_line_col(3, 4)
-    assert EqualFloat.consume(f("a = 3f1"), None) == CannotParseToFloat("3f1").set_line_col(3, 4)
+    assert EqualFloat.consume(f("%a = 3.1"), None) == NotAValidIdentifier(
+        "%a"
+    ).set_line_col(3, 4)
+    assert EqualFloat.consume(f("a = 3f1"), None) == CannotParseToFloat(
+        "3f1"
+    ).set_line_col(3, 4)
 
 
 def test_stream_block():
@@ -135,7 +139,7 @@ def test_stream_block_error():
     )
     assert tuple(mb) == (mb.opening, *body, mb.closing)
     assert mb.has_errors
-    assert mb.errors == (CannotParseToFloat("1f0").set_line_col(1, 0), )
+    assert mb.errors == (CannotParseToFloat("1f0").set_line_col(1, 0),)
 
 
 def test_block():
@@ -149,7 +153,7 @@ def test_block():
     assert len(body) == 2
     assert mb.body == (
         Comment("# hola").set_line_col(1, 0),
-        EqualFloat("x", 1.).set_line_col(2, 0),
+        EqualFloat("x", 1.0).set_line_col(2, 0),
     )
 
     assert tuple(mb) == (mb.opening, *mb.body, mb.closing)

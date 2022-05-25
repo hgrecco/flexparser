@@ -6,12 +6,12 @@ import pytest
 import flexparser.flexparser as fp
 
 _TEST = [
-        "testing",
-        "# this is a comment",
-        "  # this is also a comment",
-        "123",
-        "456 # this is a comment",
-    ]
+    "testing",
+    "# this is a comment",
+    "  # this is also a comment",
+    "123",
+    "456 # this is a comment",
+]
 
 
 def test_base_iterator():
@@ -29,7 +29,7 @@ def test_base_iterator():
 def test_statement_iterator_default():
     si = fp.StatementIterator.from_line("spam")
     assert si.peek() == (0, "spam")
-    assert tuple(si) == ((0, "spam"), )
+    assert tuple(si) == ((0, "spam"),)
 
     with pytest.raises(Exception):
         fp.StatementIterator.from_line("spam").delimiter_pattern()
@@ -49,23 +49,31 @@ def test_statement_iterator_subclass():
 def test_statement_iterator_strip_spaces():
     NewStatementIterator = fp.StatementIterator.subclass_with(strip_spaces=True)
 
-    assert tuple(NewStatementIterator.from_line("spam ")) == ((0, "spam"), )
-    assert tuple(NewStatementIterator.from_line(" spam")) == ((0, "spam"), )
-    assert tuple(NewStatementIterator.from_line(" spam ")) == ((0, "spam"), )
+    assert tuple(NewStatementIterator.from_line("spam ")) == ((0, "spam"),)
+    assert tuple(NewStatementIterator.from_line(" spam")) == ((0, "spam"),)
+    assert tuple(NewStatementIterator.from_line(" spam ")) == ((0, "spam"),)
 
     NewStatementIterator = fp.StatementIterator.subclass_with(strip_spaces=False)
 
-    assert tuple(NewStatementIterator.from_line("spam ")) == ((0, "spam "), )
-    assert tuple(NewStatementIterator.from_line(" spam")) == ((0, " spam"), )
-    assert tuple(NewStatementIterator.from_line(" spam ")) == ((0, " spam "), )
+    assert tuple(NewStatementIterator.from_line("spam ")) == ((0, "spam "),)
+    assert tuple(NewStatementIterator.from_line(" spam")) == ((0, " spam"),)
+    assert tuple(NewStatementIterator.from_line(" spam ")) == ((0, " spam "),)
 
     dlm = {
         "#": (fp.DelimiterMode.SKIP, False),
     }
-    NewStatementIterator = fp.StatementIterator.subclass_with(strip_spaces=False, delimiters=dlm)
+    NewStatementIterator = fp.StatementIterator.subclass_with(
+        strip_spaces=False, delimiters=dlm
+    )
 
-    assert tuple(NewStatementIterator.from_line("spam# ham")) == ((0, "spam"), (5, " ham"))
-    assert tuple(NewStatementIterator.from_line("spam #ham")) == ((0, "spam "), (6, "ham"))
+    assert tuple(NewStatementIterator.from_line("spam# ham")) == (
+        (0, "spam"),
+        (5, " ham"),
+    )
+    assert tuple(NewStatementIterator.from_line("spam #ham")) == (
+        (0, "spam "),
+        (6, "ham"),
+    )
 
 
 def test_statement_iterator_single_splitter():
@@ -75,7 +83,10 @@ def test_statement_iterator_single_splitter():
     NewStatementIterator = fp.StatementIterator.subclass_with(delimiters=dlm)
 
     assert tuple(NewStatementIterator.from_line("spam")) == ((0, "spam"),)
-    assert tuple(NewStatementIterator.from_line("spam#ham")) == ((0, "spam"), (5, "ham"))
+    assert tuple(NewStatementIterator.from_line("spam#ham")) == (
+        (0, "spam"),
+        (5, "ham"),
+    )
 
 
 def test_statement_iterator_multiple_splitter():
@@ -86,8 +97,16 @@ def test_statement_iterator_multiple_splitter():
     NewStatementIterator = fp.StatementIterator.subclass_with(delimiters=dlm)
 
     assert tuple(NewStatementIterator.from_line("spam")) == ((0, "spam"),)
-    assert tuple(NewStatementIterator.from_line("spam#ham!cheese")) == ((0, "spam"), (5, "ham"), (9, "cheese"))
-    assert tuple(NewStatementIterator.from_line("spam!ham#cheese")) == ((0, "spam"), (5, "ham"), (9, "cheese"))
+    assert tuple(NewStatementIterator.from_line("spam#ham!cheese")) == (
+        (0, "spam"),
+        (5, "ham"),
+        (9, "cheese"),
+    )
+    assert tuple(NewStatementIterator.from_line("spam!ham#cheese")) == (
+        (0, "spam"),
+        (5, "ham"),
+        (9, "cheese"),
+    )
 
 
 def test_sequence_iterator():
