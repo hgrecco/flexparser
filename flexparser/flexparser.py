@@ -897,7 +897,10 @@ class ParsedProject(dict[SourceLocationT, ty.Union[ParsedSourceFile, ParsedResou
 def default_locator(current_location: SourceLocationT, target: str) -> SourceLocationT:
     """Return a new location from current_location and target."""
 
-    if isinstance(current_location, (pathlib.Path, str)):
+    if current_location is None:
+        return target
+
+    elif isinstance(current_location, (pathlib.Path, str)):
         current_location = pathlib.Path(current_location).resolve()
 
         target = pathlib.Path(target)
@@ -939,7 +942,11 @@ def parse_project(
     pending = []
     for source_location in source_locations:
         if isinstance(source_location, (pathlib.Path, str)):
-            pending.append((pathlib.Path.cwd(), source_location))
+            p = pathlib.Path(source_location)
+            if p.is_absolute():
+                pending.append((None, source_location))
+            else:
+                pending.append((pathlib.Path.cwd(), source_location))
         else:
             pending.append(source_location)
 
