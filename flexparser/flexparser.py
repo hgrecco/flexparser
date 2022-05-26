@@ -999,6 +999,38 @@ def parse(
 ) -> ParsedProject:
     """Parse sources into a ParsedProject."""
 
+    if isinstance(root_block_class, RootBlock):
+        CustomRootBlock = root_block_class
+
+    elif isinstance(root_block_class, (tuple, list)):
+
+        for el in root_block_class:
+            if not issubclass(el, (Block, ParsedStatement)):
+                raise TypeError(
+                    "Elements in root_block_class must be of type Block or ParsedStatement, "
+                    f"not {el}"
+                )
+
+        @dataclass(frozen=True)
+        class CustomRootBlock(RootBlock):
+            pass
+
+        CustomRootBlock.__annotations__["body"] = Multi[ty.Union[root_block_class]]
+
+    elif issubclass(root_block_class, (Block, ParsedStatement)):
+
+        @dataclass(frozen=True)
+        class CustomRootBlock(RootBlock):
+            pass
+
+        CustomRootBlock.__annotations__["body"] = Multi[root_block_class]
+
+    else:
+        raise TypeError(
+            "root_block_class must be of type RootBlock or tuple of type Block or ParsedStatement, "
+            f"not {type(root_block_class)}"
+        )
+
     class CustomParser(Parser):
 
         _sequence_iterator_class = SequenceIterator.subclass_with(
@@ -1006,7 +1038,7 @@ def parse(
                 strip_spaces=strip_spaces, delimiters=delimiters
             )
         )
-        _root_block_class = root_block_class
+        _root_block_class = CustomRootBlock
 
     parser = CustomParser(config)
 
