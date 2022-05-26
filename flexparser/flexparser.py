@@ -991,7 +991,7 @@ def parse_project(
 def parse(
     source_locations,
     root_block_class,
-    config,
+    config=None,
     *,
     strip_spaces=True,
     delimiters=None,
