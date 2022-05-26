@@ -481,6 +481,21 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
     body: Tuple[Consume[IPST], ...]
     closing: Consume[CPST]
 
+    @classmethod
+    def subclass_with(cls, *, opening=None, body=None, closing=None):
+        @dataclass(frozen=True)
+        class CustomBlock(Block):
+            pass
+
+        if opening:
+            CustomBlock.__annotations__["opening"] = Single[ty.Union[opening]]
+        if body:
+            CustomBlock.__annotations__["body"] = Multi[ty.Union[body]]
+        if closing:
+            CustomBlock.__annotations__["closing"] = Single[ty.Union[closing]]
+
+        return CustomBlock
+
     def __iter__(self) -> Iterator[Element]:
         yield self.opening
         for el in self.body:
