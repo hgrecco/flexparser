@@ -31,9 +31,9 @@ working in this project. It is clear that there are excellent parsers out
 there but I wanted to experiment with another way of writing them.
 
 The idea is quite simple. You write a class for every type of content
-(called here `ParsedStatement`) you need to parse. Each class should
-have a `from_string` constructor. We used `typing` extensively to make
-the output structure easy to use and less error prone.
+(called here ``ParsedStatement``) you need to parse. Each class should
+have a ``from_string`` constructor. We used extensively the ``typing``
+module to make the output structure easy to use and less error prone.
 
 For example:
 
@@ -81,7 +81,7 @@ that his class is not appropriate to parse the statement.
             return cls(lhs.strip(), rhs.strip())
 
 
-You might also want to indicate that this is the right ParsedStatement
+You might also want to indicate that this is the right ``ParsedStatement``
 but something is not right:
 
 .. code-block:: python
@@ -113,7 +113,7 @@ but something is not right:
             return cls(lhs, rhs)
 
 
-Put this into `source.txt`
+Put this into ``source.txt``
 
 .. code-block:: text
 
@@ -122,7 +122,7 @@ Put this into `source.txt`
     three <- newvalue
     one == three
 
-and then run the following code:1
+and then run the following code:
 
 .. code-block:: python
 
@@ -141,12 +141,12 @@ will produce the following output:
     UnknownStatement(lineno=4, colno=0, origin='', statement='one == three')
     EOS(lineno=-1, colno=-1)
 
-The result is a collection of `ParsedStatement` or `ParsingError (flanked by
-`BOS` and `EOS` indicating beginning and ending of stream respectively).
-Notice that there are two correctly parsed statements (`Assigment`), one
-error found (`InvalidIdentifier`) and one unknown (`UnknownStatement`).
+The result is a collection of ``ParsedStatement`` or ``ParsingError`` (flanked by
+``BOS`` and ``EOS`` indicating beginning and ending of stream respectively).
+Notice that there are two correctly parsed statements (``Assigment``), one
+error found (``InvalidIdentifier``) and one unknown (``UnknownStatement``).
 
-Cool, right? Just writing a `from_string` method that outputs a datastructure
+Cool, right? Just writing a ``from_string`` method that outputs a datastructure
 produces a usable structure of parsed objects.
 
 Now what? Let's say we want to support equality comparison. Simply do:
@@ -184,7 +184,7 @@ and run it again:
     EqualityComparison(lineno=4, colno=0,  lhs='one', rhs='three')
     EOS(lineno=-1, colno=-1)
 
-You need to group certain statements together: welcome to `Block`
+You need to group certain statements together: welcome to ``Block``
 This construct allows you to group
 
 .. code-block:: python
@@ -227,7 +227,7 @@ Run the code:
     EOS(lineno=-1, colno=-1)
 
 
-Notice that there are a lot of `UnknownStatement` now, because we instructed
+Notice that there are a lot of ``UnknownStatement`` now, because we instructed
 the parser to only look for assignment within a block. So change your text file to:
 
 .. code-block:: text
@@ -253,19 +253,19 @@ and try again:
     EOS(lineno=-1, colno=-1)
 
 
-Until now we have used `parsed.iter_statements` to iterate over all parsed statements.
-But let's look inside the `parsed` object. It is a thin wrapper over a dictionary mapping
-files to parsed content. Because we have provided a single file and this does not
-contain a link another, our `parsed` object contains a single element. The key is
-something like `(None, 'source.txt')` indicating that the file 'source.txt' was loaded
-from the root location (None). The content is a `ParsedSourceFile` object with the
-following attributes:
+Until now we have used ``parsed.iter_statements`` to iterate over all parsed statements.
+But let's look inside ``parsed``, an object of ``ParsedProject`` type. It is a thin wrapper
+over a dictionary mapping files to parsed content. Because we have provided a single file
+and this does not contain a link another, our ``parsed`` object contains a single element.
+The key is something like ``(None, 'source.txt')`` indicating that the file 'source.txt'
+was loaded from the root location (None). The content is a ``ParsedSourceFile`` object with
+the following attributes:
 
-    - filename: full path of the source file
-    - mtime: modification file of the source file
-    - content_hash: sha1 hash of the pickled content
-      (this is currently not the same as hashing the file)
-    - config: extra parameters that can be given to the parser (see below).
+- **filename**: full path of the source file
+- **mtime**: modification file of the source file
+- **content_hash**: sha1 hash of the pickled content
+  (this is currently not the same as hashing the file)
+- **config**: extra parameters that can be given to the parser (see below).
 
 .. code-block:: text
 
@@ -288,52 +288,94 @@ following attributes:
 
 A few things to notice:
 
-    1. We were using a block before without knowing. The `RootBlock` is a
-       special type of Block that starts and ends automatically with the
-       file.
-    2. `opening`, `body`, `closing` are automatically annotated with the
-       possible `ParsedStatement` (plus `ParsingError`),
-       therefore autocompletes works in most IDEs.
-    3. The same is true for the defined `ParsedStatement` (we have use
-       `dataclass` for a reason). This makes using the actual
-       result of the parsing a charm!.
-    4. That annoying `subclass_with.<locals>` is because we have built
-       a class on the fly when we used `Block.subclass_with`. You can
-       get rid of it (which is actually useful for pickling) by explicit
-       subclassing Block in your code (see below).
+1. We were using a block before without knowing. The ``RootBlock`` is a
+   special type of Block that starts and ends automatically with the
+   file.
+2. ``opening``, ``body``, ``closing`` are automatically annotated with the
+   possible ``ParsedStatement`` (plus `ParsingError`),
+   therefore autocompletes works in most IDEs.
+3. The same is true for the defined ``ParsedStatement`` (we have use
+   ``dataclass`` for a reason). This makes using the actual
+   result of the parsing a charm!.
+4. That annoying ``subclass_with.<locals>`` is because we have built
+   a class on the fly when we used ``Block.subclass_with``. You can
+   get rid of it (which is actually useful for pickling) by explicit
+   subclassing Block in your code (see below).
+
+
+Multiple source files
+---------------------
+
+Most projects have more than one source file and you can parse them all in one
+call. For example:
+
+.. code-block:: python
+
+    parsed = fp.parse(["source.txt", "other_source.txt"], , (AssigmentBlock, Equality))
+
+will produce a ``ParsedProject`` object with two elements.
+
+But in many cases, a file might refer to another that also need to be parsed
+(e.g. an `#include` statement in c). **flexparser** provides the ``IncludeStatement``
+base class specially for this purpose.
+
+.. code-block:: python
+
+    @dataclass(frozen=True)
+    class Include(fp.IncludeStatement):
+        """A naive implementation of #include "file"
+        """
+
+        value: str
+
+        @classmethod
+        def from_string(cls, s):
+            if s.startwith("#include "):
+                return None
+
+            value = s[len("#include "):].strip().strip('"')
+
+            return cls(value)
+
+        @propery
+        def target(self):
+            return self.value
+
+The only difference is that you need to implement a ``target`` property
+that returns the file name or resource that this statement refers to.
 
 
 Customizing statementization
 ----------------------------
 
-statementi ... what? `flexparser` works by trying to parse each statement with
+statementi ... what? **flexparser** works by trying to parse each statement with
 one of the known classes. So it is fair to ask what is an statement in this
 context and how can you configure it to your needs. A text file is split into
 non overlapping strings called **statements**. Parsing work as follows:
 
-    1. each file is split in lines.
-    2. each line is split into statements.
-    3. each statement is parsed with the first of the contextually
-       available ParsedStatement or Block subclassed that returns
-       a `ParsedStatement` or `ParsingError`
+1. each file is split in lines.
+2. each line is split into statements.
+3. each statement is parsed with the first of the contextually
+   available ParsedStatement or Block subclassed that returns
+   a ``ParsedStatement`` or ``ParsingError``
 
 You can customize how to split each line into statements with two arguments:
 
-    - strip_spaces (bool): indicates that leading and trailing spaces must
-      be removed before attempting to parse.
-      (default: True)
-    - delimiters (dict): indicates how each line must be subsplit.
-      (default: do not divide)
+- **strip_spaces** (`bool`): indicates that leading and trailing spaces must
+  be removed before attempting to parse.
+  (default: True)
+- **delimiters** (`dict`): indicates how each line must be subsplit.
+  (default: do not divide)
 
-An delimiter example might be `{";": (fp.DelimiterMode.SKIP, False)}` which
+An delimiter example might be ``{";": (fp.DelimiterMode.SKIP, False)}`` which
 tells the statementizer (sorry) that when a ";" is found a new statement should
-begin. `DelimiterMode.SKIP` tells that ";" should not be added to the previous
-statement nor to the next. Other valid values are `WITH_PREVIOUS` and `WITH_NEXT`
+begin. ``DelimiterMode.SKIP`` tells that ";" should not be added to the previous
+statement nor to the next. Other valid values are ``WITH_PREVIOUS`` and ``WITH_NEXT``
 to append or prepend the delimiter character to the previous or next statement.
 The boolean tells the statementizer (sorry again) if it should
 stop split the line. If True, the rest of the line will be captured in the next
 statement. This is useful with comments. For example,
-`{"#": (fp.DelimiterMode.WITH_NEXT, True)}` tells the statementizer (it is not
+``{"#": (fp.DelimiterMode.WITH_NEXT, True)}`` tells the statementizer (it is not
 funny anymore) that after the first "#" it should stop splitting and capture all.
 This allows
 
