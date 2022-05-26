@@ -423,6 +423,16 @@ class ParsedStatement(ty.Generic[CT], Element):
     was successful or None otherwise
     """
 
+    def __init_subclass__(cls, **kwargs):
+        sig = inspect.signature(cls.from_string)
+        if len(sig.parameters) == 1:
+            cls._from_string2 = cls.from_string
+            cls.from_string = cls._from_string3
+
+    @classmethod
+    def _from_string3(cls: Type[PST], s: str, config: CT) -> FromString[PST]:
+        return cls._from_string2(s)
+
     @classmethod
     @abc.abstractmethod
     def from_string(cls: Type[PST], s: str, config: CT) -> FromString[PST]:
