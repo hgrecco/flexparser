@@ -115,3 +115,22 @@ def test_block(klass):
 
     assert tuple(mb) == (mb.opening, *mb.body, mb.closing)
     assert not mb.has_errors
+
+
+@pytest.mark.parametrize("klass", (MyBlock, MyBlock2))
+def test_unfinished_block(klass):
+    lines = "@begin\n# hola\nx=1.0".split("\n")
+    si = fp.SequenceIterator.from_lines(lines)
+
+    mb = klass.consume(si, None)
+    assert mb.opening == Open().set_line_col(0, 0)
+    assert mb.closing == fp.UnexpectedEOF().set_line_col(-1, -1)
+    body = tuple(mb.body)
+    assert len(body) == 2
+    assert mb.body == (
+        Comment("# hola").set_line_col(1, 0),
+        EqualFloat("x", 1.0).set_line_col(2, 0),
+    )
+
+    assert tuple(mb) == (mb.opening, *mb.body, mb.closing)
+    assert mb.has_errors

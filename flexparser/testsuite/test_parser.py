@@ -1,5 +1,11 @@
 from flexparser import flexparser as fp
-from flexparser.testsuite.common import Comment, EqualFloat, MyParser
+from flexparser.testsuite.common import (
+    Comment,
+    EqualFloat,
+    MyBlock,
+    MyParser,
+    MyParserWithBlock,
+)
 
 
 def test_consume():
@@ -48,3 +54,35 @@ def test_parse(tmp_path):
     )
     assert tuple(mb) == (mb.opening, *body, mb.closing)
     assert not mb.has_errors
+
+
+def test_unfinished_block(tmp_path):
+    content = "@begin\n# hola\nx=1.0"
+
+    tmp_file = tmp_path / "bla.txt"
+    tmp_file.write_text(content)
+    myparser = MyParserWithBlock(None)
+
+    psf = myparser.parse(tmp_file)
+    assert psf.has_errors
+    assert psf.config is None
+    assert psf.mtime == tmp_file.stat().st_mtime
+    assert psf.filename == tmp_file
+    assert tuple(psf.localized_errors()) == (
+        fp.UnexpectedEOF().set_line_col(-1, -1).copy_with(tmp_file),
+    )
+    assert psf.origin == psf.filename
+    # TODO:
+    # assert psf.content_hash == hashlib.sha1(content.encode("utf-8")).hexdigest()
+
+    mb = psf.parsed_source
+    assert isinstance(mb.opening, fp.BOS)
+    assert isinstance(mb.closing, fp.EOS)
+    body = tuple(mb.body)
+    assert len(body) == 1
+    assert isinstance(body[0], MyBlock)
+    assert body[0].closing == fp.UnexpectedEOF().set_line_col(-1, -1)
+    assert body[0].body == (
+        Comment("# hola").set_line_col(1, 0),
+        EqualFloat("x", 1.0).set_line_col(2, 0),
+    )

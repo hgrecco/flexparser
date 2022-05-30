@@ -87,3 +87,13 @@ class MyRoot(fp.RootBlock):
 class MyParser(fp.Parser):
 
     _root_block_class = MyRoot
+
+
+class MyRootWithBlock(fp.RootBlock):
+
+    body: fp.Multi[typing.Union[Comment, EqualFloat, MyBlock]]
+
+
+class MyParserWithBlock(fp.Parser):
+
+    _root_block_class = MyRootWithBlock
