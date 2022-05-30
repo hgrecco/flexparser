@@ -15,7 +15,6 @@
 
 from __future__ import annotations
 
-import abc
 import collections
 import dataclasses
 import enum
@@ -423,19 +422,8 @@ class ParsedStatement(ty.Generic[CT], Element):
     was successful or None otherwise
     """
 
-    def __init_subclass__(cls, **kwargs):
-        sig = inspect.signature(cls.from_string)
-        if len(sig.parameters) == 1:
-            cls._from_string2 = cls.from_string
-            cls.from_string = cls._from_string3
-
     @classmethod
-    def _from_string3(cls: Type[PST], s: str, config: CT) -> FromString[PST]:
-        return cls._from_string2(s)
-
-    @classmethod
-    @abc.abstractmethod
-    def from_string(cls: Type[PST], s: str, config: CT) -> FromString[PST]:
+    def from_string(cls: Type[PST], s: str) -> FromString[PST]:
         """Parse a string into a ParsedStatement.
 
         Return files and their meaning:
@@ -444,6 +432,22 @@ class ParsedStatement(ty.Generic[CT], Element):
         3. A subclass of ParsingError the string could be parsed with this class but there is
            an error.
         """
+        raise NotImplementedError(
+            "ParsedStatement subclasses must implement "
+            "'from_string' or 'from_string_and_config'"
+        )
+
+    @classmethod
+    def from_string_and_config(cls: Type[PST], s: str, config: CT) -> FromString[PST]:
+        """Parse a string into a ParsedStatement.
+
+        Return files and their meaning:
+        1. None: the string cannot be parsed with this class.
+        2. A subclass of ParsedStatement: the string was parsed successfully
+        3. A subclass of ParsingError the string could be parsed with this class but there is
+           an error.
+        """
+        return cls.from_string(s)
 
     @classmethod
     def consume(
@@ -458,7 +462,7 @@ class ParsedStatement(ty.Generic[CT], Element):
            an error, advance the iterator.
         """
         lineno, colno, statement = sequence_iterator.peek()
-        parsed_statement = cls.from_string(statement, config)
+        parsed_statement = cls.from_string_and_config(statement, config)
         if parsed_statement is None:
             return None
         next(sequence_iterator)
@@ -628,7 +632,7 @@ class BOS(ParsedStatement[CT]):
     """Beginning of sequence."""
 
     @classmethod
-    def from_string(cls: Type[PST], s: str, config: CT) -> FromString[PST]:
+    def from_string_and_config(cls: Type[PST], s: str, config: CT) -> FromString[PST]:
         return cls()
 
 
@@ -636,7 +640,7 @@ class EOS(ParsedStatement[CT]):
     """End of sequence."""
 
     @classmethod
-    def from_string(cls: Type[PST], s: str, config: CT) -> FromString[PST]:
+    def from_string_and_config(cls: Type[PST], s: str, config: CT) -> FromString[PST]:
         return cls()
 
 
@@ -645,6 +649,17 @@ class RootBlock(typing.Generic[IPST, CT], Block[BOS, IPST, EOS, CT]):
 
     opening: Single[BOS]
     closing: Single[EOS]
+
+    @classmethod
+    def subclass_with(cls, *, body=None):
+        @dataclass(frozen=True)
+        class CustomRootBlock(RootBlock):
+            pass
+
+        if body:
+            CustomRootBlock.__annotations__["body"] = Multi[ty.Union[body]]
+
+        return CustomRootBlock
 
     @classmethod
     def consume_opening(
@@ -919,7 +934,9 @@ class ParsedProject(dict[SourceLocationT, ty.Union[ParsedSourceFile, ParsedResou
         yield from self._iter_statements(self.items(), set(), include_only_once)
 
 
-def default_locator(current_location: SourceLocationT, target: str) -> SourceLocationT:
+def default_locator(
+    current_location: Optional[SourceLocationT], target: str
+) -> SourceLocationT:
     """Return a new location from current_location and target."""
 
     if current_location is None:
@@ -928,20 +945,21 @@ def default_locator(current_location: SourceLocationT, target: str) -> SourceLoc
     elif isinstance(current_location, (pathlib.Path, str)):
         current_location = pathlib.Path(current_location).resolve()
 
+        if current_location.is_file():
+            current_path = current_location.parent
+        else:
+            current_path = current_location
+
         target = pathlib.Path(target)
         if target.is_absolute():
             raise ValueError(
                 f"Cannot refer to absolute paths in import statements ({current_location}, {target})."
             )
 
-        if current_location.is_file():
-            tmp = current_location.parent / target
-        else:
-            tmp = current_location / target
-
-        if not tmp.is_relative_to(current_location.parent):
+        tmp = (current_path / target).resolve()
+        if not tmp.is_relative_to(current_path):
             raise ValueError(
-                f"Cannot refer to locations above the root ({current_location}, {target})"
+                f"Cannot refer to locations above the current location ({current_location}, {target})"
             )
 
         return tmp
@@ -999,48 +1017,57 @@ def parse(
 ) -> ParsedProject:
     """Parse sources into a ParsedProject."""
 
-    if isinstance(root_block_class, RootBlock):
-        CustomRootBlock = root_block_class
-
-    elif isinstance(root_block_class, (tuple, list)):
-
-        for el in root_block_class:
-            if not issubclass(el, (Block, ParsedStatement)):
-                raise TypeError(
-                    "Elements in root_block_class must be of type Block or ParsedStatement, "
-                    f"not {el}"
-                )
-
-        @dataclass(frozen=True)
-        class CustomRootBlock(RootBlock):
-            pass
-
-        CustomRootBlock.__annotations__["body"] = Multi[ty.Union[root_block_class]]
-
-    elif issubclass(root_block_class, (Block, ParsedStatement)):
-
-        @dataclass(frozen=True)
-        class CustomRootBlock(RootBlock):
-            pass
-
-        CustomRootBlock.__annotations__["body"] = Multi[root_block_class]
+    if isinstance(root_block_class, type) and issubclass(root_block_class, Parser):
+        parser = root_block_class(config)
 
     else:
-        raise TypeError(
-            "root_block_class must be of type RootBlock or tuple of type Block or ParsedStatement, "
-            f"not {type(root_block_class)}"
-        )
+        if isinstance(root_block_class, (tuple, list)):
 
-    class CustomParser(Parser):
+            for el in root_block_class:
+                if not issubclass(el, (Block, ParsedStatement)):
+                    raise TypeError(
+                        "Elements in root_block_class must be of type Block or ParsedStatement, "
+                        f"not {el}"
+                    )
 
-        _sequence_iterator_class = SequenceIterator.subclass_with(
-            statement_iterator_class=StatementIterator.subclass_with(
-                strip_spaces=strip_spaces, delimiters=delimiters
+            @dataclass(frozen=True)
+            class CustomRootBlock(RootBlock):
+                pass
+
+            CustomRootBlock.__annotations__["body"] = Multi[ty.Union[root_block_class]]
+
+        elif isinstance(root_block_class, type) and issubclass(
+            root_block_class, RootBlock
+        ):
+
+            CustomRootBlock = root_block_class
+
+        elif isinstance(root_block_class, type) and issubclass(
+            root_block_class, (Block, ParsedStatement)
+        ):
+
+            @dataclass(frozen=True)
+            class CustomRootBlock(RootBlock):
+                pass
+
+            CustomRootBlock.__annotations__["body"] = Multi[root_block_class]
+
+        else:
+            raise TypeError(
+                "root_block_class must be of type RootBlock or tuple of type Block or ParsedStatement, "
+                f"not {type(root_block_class)}"
             )
-        )
-        _root_block_class = CustomRootBlock
 
-    parser = CustomParser(config)
+        class CustomParser(Parser):
+
+            _sequence_iterator_class = SequenceIterator.subclass_with(
+                statement_iterator_class=StatementIterator.subclass_with(
+                    strip_spaces=strip_spaces, delimiters=delimiters
+                )
+            )
+            _root_block_class = CustomRootBlock
+
+        parser = CustomParser(config)
 
     if isinstance(source_locations, (str, pathlib.Path)):
         return parse_project(parser, [source_locations], locator=locator)
