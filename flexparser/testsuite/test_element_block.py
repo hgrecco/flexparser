@@ -134,3 +134,14 @@ def test_unfinished_block(klass):
 
     assert tuple(mb) == (mb.opening, *mb.body, mb.closing)
     assert mb.has_errors
+
+
+def test_not_proper_statement():
+    class MySt(fp.ParsedStatement):
+        pass
+
+    with pytest.raises(NotImplementedError):
+        MySt.from_string("a = 1")
+
+    with pytest.raises(NotImplementedError):
+        MySt.from_string_and_config("a = 1", None)
