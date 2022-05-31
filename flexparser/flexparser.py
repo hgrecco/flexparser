@@ -696,26 +696,15 @@ SourceLocationT = ty.Union[str, pathlib.Path, ty.Tuple[str, str]]
 
 
 @dataclass(frozen=True)
-class ParsedSourceFile(typing.Generic[RBT, CT]):
-    """The parsed representation of a file."""
+class _ParsedCommon:
 
     parsed_source: RBT
-
-    # Fullpath of the original file.
-    filename: pathlib.Path
-
-    # Modification time of the file.
-    mtime: float
 
     # SHA-1 hash.
     content_hash: str
 
     # Parser configuration.
     config: CT
-
-    @property
-    def origin(self) -> SourceLocationT:
-        return self.filename
 
     @cached_property
     def has_errors(self) -> bool:
@@ -727,32 +716,31 @@ class ParsedSourceFile(typing.Generic[RBT, CT]):
 
 
 @dataclass(frozen=True)
-class ParsedResource(typing.Generic[RBT, CT]):
-    """The parsed representation of a python resource."""
+class ParsedSourceFile(_ParsedCommon, typing.Generic[RBT, CT]):
+    """The parsed representation of a file."""
 
-    parsed_source: RBT
+    # Fullpath of the original file.
+    filename: pathlib.Path
+
+    # Modification time of the file.
+    mtime: float
+
+    @property
+    def origin(self) -> SourceLocationT:
+        return self.filename
+
+
+@dataclass(frozen=True)
+class ParsedResource(_ParsedCommon, typing.Generic[RBT, CT]):
+    """The parsed representation of a python resource."""
 
     # Fullpath of the original file, None if a text was provided
     package: str
     resource_name: str
 
-    # SHA-1 hash
-    content_hash: str
-
-    # Parser configuration.
-    config: CT
-
     @property
     def origin(self) -> SourceLocationT:
         return self.package, self.resource_name
-
-    @cached_property
-    def has_errors(self) -> bool:
-        return self.parsed_source.has_errors
-
-    def localized_errors(self):
-        for lineno, colno, err in self.parsed_source.errors:
-            yield err.copy_with(self.origin)
 
 
 @dataclass(frozen=True)
@@ -835,7 +823,11 @@ class Parser(ty.Generic[RBT, CT]):
             hsi = HashSequenceIterator(sic)
             body = self.consume(hsi)
             return ParsedSourceFile(
-                body, path, path.stat().st_mtime, hsi.hexdigest(), self._config
+                body,
+                hsi.hexdigest(),
+                self._config,
+                path,
+                path.stat().st_mtime,
             )
 
     def parse_resource_from_file(
@@ -877,7 +869,11 @@ class Parser(ty.Generic[RBT, CT]):
             hsi = HashSequenceIterator(sic)
             body = self.consume(hsi)
         return ParsedResource(
-            body, package, resource_name, hsi.hexdigest(), self._config
+            body,
+            hsi.hexdigest(),
+            self._config,
+            package,
+            resource_name,
         )
 
 
@@ -891,7 +887,9 @@ class IncludeStatement(ParsedStatement):
 
     @property
     def target(self) -> str:
-        raise ValueError
+        raise NotImplementedError(
+            "IncludeStatement subclasses must implement target property."
+        )
 
 
 class ParsedProject(dict[SourceLocationT, ty.Union[ParsedSourceFile, ParsedResource]]):
