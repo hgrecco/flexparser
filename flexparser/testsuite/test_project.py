@@ -208,3 +208,33 @@ def test_include_file(tmp_path):
         Comment("# chau").set_line_col(1, 0),
         fp.EOS().set_line_col(-1, -1),
     )
+
+
+def test_resources(tmp_path):
+    @dataclass(frozen=True)
+    class Include(fp.IncludeStatement):
+
+        value: str
+
+        @property
+        def target(self) -> str:
+            return "bla2.txt"
+
+        @classmethod
+        def from_string(cls, s: str):
+            if s.startswith("include"):
+                return cls(s[len("include ") :].strip())
+
+    pp = fp.parse(("flexparser.testsuite", "bla1.txt"), (Include, Comment, EqualFloat))
+
+    assert len(pp) == 2
+
+    assert tuple(pp.iter_statements()) == (
+        fp.BOS().set_line_col(0, 0),
+        fp.BOS().set_line_col(0, 0),
+        Comment("# hola").set_line_col(0, 0),
+        EqualFloat("x", 1.0).set_line_col(1, 0),
+        fp.EOS().set_line_col(-1, -1),
+        Comment("# chau").set_line_col(1, 0),
+        fp.EOS().set_line_col(-1, -1),
+    )

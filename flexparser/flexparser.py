@@ -94,7 +94,9 @@ class UnknownStatement(ParsingError):
     statement: str
 
     def __str__(self):
-        return f"Could not parse '{self.statement}' in {self.origin_} (line: {self.lineno}, col: {self.colno})"
+        if self.origin:
+            return f"Could not parse '{self.statement}' in {self.origin_} (line: {self.lineno}, col: {self.colno})"
+        return f"Could not parse '{self.statement}' (line: {self.lineno}, col: {self.colno})"
 
     @classmethod
     def from_line_col_statement(cls, lineno, colno, statement):
@@ -693,8 +695,8 @@ class RootBlock(ty.Generic[IPST, CT], Block[BOS, IPST, EOS, CT]):
 #################
 
 ResourceT = ty.Tuple[str, str]  # package name, resource name
-LocatorT = ty.Union[pathlib.Path, ResourceT]
-SourceLocationT = ty.Union[str, LocatorT]
+StrictLocationT = ty.Union[pathlib.Path, ResourceT]
+SourceLocationT = ty.Union[str, StrictLocationT]
 
 
 @dataclass(frozen=True)
@@ -709,7 +711,7 @@ class _ParsedCommon(ty.Generic[RBT, CT]):
     config: CT
 
     @property
-    def origin(self) -> LocatorT:
+    def origin(self) -> StrictLocationT:
         raise NotImplementedError
 
     @cached_property
@@ -775,10 +777,11 @@ class Parser(ty.Generic[RBT, CT]):
     _config: CT
 
     #: try to open resources as files.
-    _prefer_resource_as_file: bool = True
+    _prefer_resource_as_file: bool
 
-    def __init__(self, config: CT):
+    def __init__(self, config: CT, prefer_resource_as_file=True):
         self._config = config
+        self._prefer_resource_as_file = prefer_resource_as_file
 
     def consume(self, sequence_iterator: SequenceIterator) -> RBT:
         return self._root_block_class.consume(sequence_iterator, self._config)
@@ -803,17 +806,17 @@ class Parser(ty.Generic[RBT, CT]):
             return self.parse_resource(*source_location)
 
         if isinstance(source_location, str):
-            source_location = pathlib.Path(source_location)
+            return self.parse_file(pathlib.Path(source_location))
 
-        elif not isinstance(source_location, pathlib.Path):
-            raise TypeError(
-                f"Unknown type {type(source_location)}, "
-                "use str or pathlib.Path for files or "
-                "(package: str, resource_name: str) tuple "
-                "for a resource."
-            )
+        if isinstance(source_location, pathlib.Path):
+            return self.parse_file(source_location)
 
-        return self.parse_file(source_location)
+        raise TypeError(
+            f"Unknown type {type(source_location)}, "
+            "use str or pathlib.Path for files or "
+            "(package: str, resource_name: str) tuple "
+            "for a resource."
+        )
 
     def parse_file(self, path: pathlib.Path) -> ParsedSourceFile[RBT, CT]:
         """Parse a file into a ParsedSourceFile.
@@ -900,7 +903,7 @@ class IncludeStatement(ParsedStatement):
 
 
 class ParsedProject(
-    dict[ty.Optional[LocatorT], ty.Union[ParsedSourceFile, ParsedResource]]
+    dict[ty.Optional[StrictLocationT], ty.Union[ParsedSourceFile, ParsedResource]]
 ):
     """Collection of files, independent or connected via IncludeStatement.
 
@@ -947,7 +950,7 @@ class ParsedProject(
         yield from self._iter_statements([(None, self[None])], set(), include_only_once)
 
 
-def default_locator(source_location: LocatorT, target: str) -> LocatorT:
+def default_locator(source_location: StrictLocationT, target: str) -> StrictLocationT:
     """Return a new location from current_location and target."""
 
     if isinstance(source_location, pathlib.Path):
@@ -958,13 +961,13 @@ def default_locator(source_location: LocatorT, target: str) -> LocatorT:
         else:
             current_path = source_location
 
-        target = pathlib.Path(target)
-        if target.is_absolute():
+        target_path = pathlib.Path(target)
+        if target_path.is_absolute():
             raise ValueError(
                 f"Cannot refer to absolute paths in import statements ({source_location}, {target})."
             )
 
-        tmp = (current_path / target).resolve()
+        tmp = (current_path / target_path).resolve()
         if not tmp.is_relative_to(current_path):
             raise ValueError(
                 f"Cannot refer to locations above the current location ({source_location}, {target})"
@@ -983,20 +986,28 @@ def default_locator(source_location: LocatorT, target: str) -> LocatorT:
     )
 
 
+SpecT = ty.Union[
+    ty.Type[Parser],
+    ty.Union[ty.Type[Block], ty.Type[ParsedStatement]],
+    ty.Iterable[ty.Union[ty.Type[Block], ty.Type[ParsedStatement]]],
+    ty.Type[RootBlock],
+]
+
+
 def parse(
-    entry_point,
-    spec,
+    entry_point: SourceLocationT,
+    spec: SpecT,
     config=None,
     *,
     strip_spaces=True,
     delimiters=None,
     locator=default_locator,
+    prefer_resource_as_file=True,
 ) -> ParsedProject:
     """Parse sources into a ParsedProject."""
 
     if isinstance(spec, type) and issubclass(spec, Parser):
-        parser = spec(config)
-
+        CustomParser = spec
     else:
         if isinstance(spec, (tuple, list)):
 
@@ -1027,7 +1038,7 @@ def parse(
 
         else:
             raise TypeError(
-                "root_block_class must be of type RootBlock or tuple of type Block or ParsedStatement, "
+                "`spec` must be of type RootBlock or tuple of type Block or ParsedStatement, "
                 f"not {type(spec)}"
             )
 
@@ -1040,15 +1051,17 @@ def parse(
             )
             _root_block_class = CustomRootBlock
 
-        parser = CustomParser(config)
+    parser = CustomParser(config, prefer_resource_as_file=prefer_resource_as_file)
 
     pp = ParsedProject()
 
-    pending = []
+    # : ty.List[Optional[ty.Union[LocatorT, str]], ...]
+    pending: ty.List[ty.Optional[ty.Tuple[StrictLocationT, str]]] = []
     if isinstance(entry_point, (str, pathlib.Path)):
         entry_point = pathlib.Path(entry_point)
         if not entry_point.is_absolute():
             entry_point = pathlib.Path.cwd() / entry_point
+
     elif not (isinstance(entry_point, tuple) and len(entry_point) == 2):
         raise TypeError(
             f"Cannot handle type {type(entry_point)}, "
@@ -1059,17 +1072,17 @@ def parse(
 
     pp[None] = parsed = parser.parse(entry_point)
     pending.extend(
-        ((parsed.origin, el.target))
+        (parsed.origin, el.target)
         for el in parsed.parsed_source.filter_by(IncludeStatement)
     )
 
     while pending:
         source_location, target = pending.pop(0)
         pp[(source_location, target)] = parsed = parser.parse(
-            default_locator(source_location, target)
+            locator(source_location, target)
         )
         pending.extend(
-            ((parsed.origin, el.target))
+            (parsed.origin, el.target)
             for el in parsed.parsed_source.filter_by(IncludeStatement)
         )
 

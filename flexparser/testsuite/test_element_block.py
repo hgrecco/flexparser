@@ -24,6 +24,7 @@ def test_formatting():
     assert obj.format_line_col == "(line: -1, col: -1)"
     obj.set_line_col(10, 3)
     assert obj.format_line_col == "(line: 10, col: 3)"
+    assert str(obj) == "EqualFloat(lineno=10, colno=3, a='a', b=3.1)"
 
     obj = EqualFloat.from_string("%a = 3.1")
     assert obj.origin == ""
@@ -44,6 +45,9 @@ def test_parse_equal_float():
 
     assert EqualFloat.from_string("%a = 3.1") == NotAValidIdentifier("%a")
     assert EqualFloat.from_string("a = 3f1") == CannotParseToFloat("3f1")
+
+    obj = EqualFloat.from_string("a = 3f1")
+    assert str(obj) == "CannotParseToFloat(lineno=-1, colno=-1, origin='', value='3f1')"
 
 
 def test_consume_equal_float():
