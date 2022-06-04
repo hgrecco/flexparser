@@ -9,7 +9,7 @@
     - block directives:
 
 
-    :copyright: 2022 by flexcache Authors, see AUTHORS for more details.
+    :copyright: 2022 by flexparser Authors, see AUTHORS for more details.
     :license: BSD, see LICENSE for more details.
 """
 

@@ -1,28 +1,7 @@
-flexcache Changelog
-===================
+flexparser Changelog
+====================
 
-
-0.3 (unreleased)
-----------------
-
-- Nothing changed yet.
-
-
-0.2 (2022-02-28)
-----------------
-
-- Split header into Header, Invalidate and Naming classes.
-- Renamed reader to converter, in docs and variables.
-- Allow passing directly a converter_id as string.
-- Allow converters with one (source_object)
-  or two parameters (source_object, cache_path_stem).
-- Added NameByHashIter.
-- Added type checking on source_object using __post_init__.
-- Added docstrings.
-- Added checks to fail fast when creating Header classes.
-
-
-0.1 (2022-02-27)
+0.1 (unreleased)
 ----------------
 
 - first public release.

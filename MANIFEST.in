@@ -1,5 +1,5 @@
 include AUTHORS CHANGES LICENSE README.rst BADGES.rst version.py
 include *.yaml
-recursive-include flexcache *.py
+recursive-include flexparser *.py
 exclude pull_request_template.md version.py .coveragerc
 global-exclude *.pyc *~ .DS_Store *__pycache__* *.pyo
