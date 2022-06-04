@@ -93,7 +93,8 @@ def test_parse2(tmp_path, definition):
 
     assert len(pp) == 1
 
-    psf = pp[list(pp.keys())[0]]
+    assert None in pp
+    psf = pp[None]
     assert not psf.has_errors
     assert psf.config is None
     assert psf.mtime == tmp_file.stat().st_mtime
@@ -140,7 +141,8 @@ def test_parse3(tmp_path, definition):
     assert len(pp) == 1
     assert tuple(pp.localized_errors()) == ()
 
-    psf = pp[list(pp.keys())[0]]
+    assert None in pp
+    psf = pp[None]
     assert not psf.has_errors
     assert psf.config is None
     assert psf.mtime == tmp_file.stat().st_mtime
@@ -196,6 +198,9 @@ def test_include_file(tmp_path):
     tmp_file2.write_text("# hola\nx=1.0")
 
     pp = fp.parse(tmp_file1, (Include, Comment, EqualFloat))
+
+    assert None in pp
+    assert (tmp_file1, "bla2.txt") in pp
 
     assert len(pp) == 2
 
