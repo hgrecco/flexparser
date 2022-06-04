@@ -200,7 +200,7 @@ def test_include_file(tmp_path):
     pp = fp.parse(tmp_file1, (Include, Comment, EqualFloat))
 
     assert None in pp
-    assert (tmp_file1, "bla2 .txt") in pp
+    assert (tmp_file1, "bla2.txt") in pp
 
     assert len(pp) == 2
 
