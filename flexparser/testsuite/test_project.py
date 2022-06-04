@@ -1,4 +1,5 @@
 import pathlib
+from dataclasses import dataclass
 
 import pytest
 
@@ -15,23 +16,21 @@ from flexparser.testsuite.common import (
 
 
 def test_locator():
-    assert fp.default_locator(None, "bla.txt") == "bla.txt"
-
     this_file = pathlib.Path(__file__)
 
     with pytest.raises(ValueError):
+        # Cannot use absolute path as target.
         assert fp.default_locator(this_file, "/temp/bla.txt")
-    with pytest.raises(ValueError):
+
+    with pytest.raises(TypeError):
+        assert fp.default_locator(str(this_file), "bla.txt")
+
+    with pytest.raises(TypeError):
         assert fp.default_locator(str(this_file), "/temp/bla.txt")
 
     assert fp.default_locator(this_file, "bla.txt") == this_file.parent / "bla.txt"
     assert (
         fp.default_locator(this_file.parent, "bla.txt") == this_file.parent / "bla.txt"
-    )
-    assert fp.default_locator(str(this_file), "bla.txt") == this_file.parent / "bla.txt"
-    assert (
-        fp.default_locator(str(this_file.parent), "bla.txt")
-        == this_file.parent / "bla.txt"
     )
 
     with pytest.raises(ValueError):
@@ -172,5 +171,40 @@ def test_parse3(tmp_path, definition):
         EqualFloat("y", 2.0).set_line_col(1, 0),
         EqualFloat("x", 1.0).set_line_col(2, 0),
         Close().set_line_col(3, 0),
+        fp.EOS().set_line_col(-1, -1),
+    )
+
+
+def test_include_file(tmp_path):
+    @dataclass(frozen=True)
+    class Include(fp.IncludeStatement):
+
+        value: str
+
+        @property
+        def target(self) -> str:
+            return "bla2.txt"
+
+        @classmethod
+        def from_string(cls, s: str):
+            if s.startswith("include"):
+                return cls(s[len("include ") :].strip())
+
+    tmp_file1 = tmp_path / "bla1.txt"
+    tmp_file2 = tmp_path / "bla2.txt"
+    tmp_file1.write_text("include bla2.txt\n# chau")
+    tmp_file2.write_text("# hola\nx=1.0")
+
+    pp = fp.parse(tmp_file1, (Include, Comment, EqualFloat))
+
+    assert len(pp) == 2
+
+    assert tuple(pp.iter_statements()) == (
+        fp.BOS().set_line_col(0, 0),
+        fp.BOS().set_line_col(0, 0),
+        Comment("# hola").set_line_col(0, 0),
+        EqualFloat("x", 1.0).set_line_col(1, 0),
+        fp.EOS().set_line_col(-1, -1),
+        Comment("# chau").set_line_col(1, 0),
         fp.EOS().set_line_col(-1, -1),
     )

@@ -25,7 +25,6 @@ import logging
 import pathlib
 import pickle
 import re
-import typing
 import typing as ty
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
@@ -64,7 +63,7 @@ class Element:
 class ParsingError(Element, Exception):
     """Base class for all exceptions in this package."""
 
-    origin: typing.Union[str, typing.Tuple[str, str], pathlib.Path] = dataclasses.field(
+    origin: ty.Union[str, ty.Tuple[str, str], pathlib.Path] = dataclasses.field(
         init=False, default=""
     )
 
@@ -244,10 +243,10 @@ def isplit_mode(
 T = ty.TypeVar("T")
 
 
-class BaseIterator(typing.Generic[T], Iterator[T]):
+class BaseIterator(ty.Generic[T], Iterator[T]):
     """Base class for iterator that provides the ability to peek."""
 
-    _cache: typing.Deque[T]
+    _cache: ty.Deque[T]
 
     def __init__(self, iterator: Iterator[T]):
         self._it = iterator
@@ -474,7 +473,7 @@ OPST = ty.TypeVar("OPST", bound="ParsedStatement")
 IPST = ty.TypeVar("IPST", bound="ParsedStatement")
 CPST = ty.TypeVar("CPST", bound="ParsedStatement")
 BT = ty.TypeVar("BT", bound="Block")
-RBT = typing.TypeVar("RBT", bound="RootBlock")
+RBT = ty.TypeVar("RBT", bound="RootBlock")
 
 
 @dataclass(frozen=True)
@@ -513,12 +512,14 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
     # Convenience methods to iterate parsed statements
     ###################################################
 
-    def filter_by(self, *klass) -> Iterator[Element]:
+    _ElementT = ty.TypeVar("_ElementT", bound=Element)
+
+    def filter_by(self, *klass: Type[_ElementT]) -> Iterator[_ElementT]:
         """Yield elements of a given class or classes."""
-        yield from (el for el in self if isinstance(el, klass))
+        yield from (el for el in self if isinstance(el, klass))  # noqa Bug in pycharm.
 
     @cached_property
-    def errors(self) -> ty.Tuple[Element, ...]:
+    def errors(self) -> ty.Tuple[ParsingError, ...]:
         """Tuple of errors found."""
         return tuple(self.filter_by(ParsingError))
 
@@ -644,7 +645,7 @@ class EOS(ParsedStatement[CT]):
         return cls()
 
 
-class RootBlock(typing.Generic[IPST, CT], Block[BOS, IPST, EOS, CT]):
+class RootBlock(ty.Generic[IPST, CT], Block[BOS, IPST, EOS, CT]):
     """A sequence of statement flanked by the beginning and ending of stream."""
 
     opening: Single[BOS]
@@ -691,12 +692,13 @@ class RootBlock(typing.Generic[IPST, CT], Block[BOS, IPST, EOS, CT]):
 # Source parsing
 #################
 
-
-SourceLocationT = ty.Union[str, pathlib.Path, ty.Tuple[str, str]]
+ResourceT = ty.Tuple[str, str]  # package name, resource name
+LocatorT = ty.Union[pathlib.Path, ResourceT]
+SourceLocationT = ty.Union[str, LocatorT]
 
 
 @dataclass(frozen=True)
-class _ParsedCommon:
+class _ParsedCommon(ty.Generic[RBT, CT]):
 
     parsed_source: RBT
 
@@ -705,6 +707,10 @@ class _ParsedCommon:
 
     # Parser configuration.
     config: CT
+
+    @property
+    def origin(self) -> LocatorT:
+        raise NotImplementedError
 
     @cached_property
     def has_errors(self) -> bool:
@@ -716,7 +722,7 @@ class _ParsedCommon:
 
 
 @dataclass(frozen=True)
-class ParsedSourceFile(_ParsedCommon, typing.Generic[RBT, CT]):
+class ParsedSourceFile(_ParsedCommon[RBT, CT], ty.Generic[RBT, CT]):
     """The parsed representation of a file."""
 
     # Fullpath of the original file.
@@ -726,12 +732,12 @@ class ParsedSourceFile(_ParsedCommon, typing.Generic[RBT, CT]):
     mtime: float
 
     @property
-    def origin(self) -> SourceLocationT:
+    def origin(self) -> pathlib.Path:
         return self.filename
 
 
 @dataclass(frozen=True)
-class ParsedResource(_ParsedCommon, typing.Generic[RBT, CT]):
+class ParsedResource(_ParsedCommon[RBT, CT], ty.Generic[RBT, CT]):
     """The parsed representation of a python resource."""
 
     # Fullpath of the original file, None if a text was provided
@@ -739,7 +745,7 @@ class ParsedResource(_ParsedCommon, typing.Generic[RBT, CT]):
     resource_name: str
 
     @property
-    def origin(self) -> SourceLocationT:
+    def origin(self) -> ResourceT:
         return self.package, self.resource_name
 
 
@@ -750,7 +756,7 @@ class CannotParseResourceAsFile(Exception):
     """
 
     package: str
-    resource: str
+    resource_name: str
 
 
 class Parser(ty.Generic[RBT, CT]):
@@ -788,7 +794,7 @@ class Parser(ty.Generic[RBT, CT]):
             if str or pathlib.Path is interpreted as a file.
             if (str, str) is interpreted as (package, resource) using the resource python api.
         """
-        if isinstance(source_location, tuple):
+        if isinstance(source_location, tuple) and len(source_location) == 2:
             if self._prefer_resource_as_file:
                 try:
                     return self.parse_resource_from_file(*source_location)
@@ -798,6 +804,7 @@ class Parser(ty.Generic[RBT, CT]):
 
         if isinstance(source_location, str):
             source_location = pathlib.Path(source_location)
+
         elif not isinstance(source_location, pathlib.Path):
             raise TypeError(
                 f"Unknown type {type(source_location)}, "
@@ -892,8 +899,16 @@ class IncludeStatement(ParsedStatement):
         )
 
 
-class ParsedProject(dict[SourceLocationT, ty.Union[ParsedSourceFile, ParsedResource]]):
-    """Collection of files, independent or connected via IncludeStatement/"""
+class ParsedProject(
+    dict[ty.Optional[LocatorT], ty.Union[ParsedSourceFile, ParsedResource]]
+):
+    """Collection of files, independent or connected via IncludeStatement.
+
+    Keys are either an absolute pathname  or a tuple package name, resource name.
+
+    None is the name of the root.
+
+    """
 
     @cached_property
     def has_errors(self) -> bool:
@@ -929,84 +944,48 @@ class ParsedProject(dict[SourceLocationT, ty.Union[ParsedSourceFile, ParsedResou
         include_only_once
             if true, each file cannot be included more than once.
         """
-        yield from self._iter_statements(self.items(), set(), include_only_once)
+        yield from self._iter_statements([(None, self[None])], set(), include_only_once)
 
 
-def default_locator(
-    current_location: Optional[SourceLocationT], target: str
-) -> SourceLocationT:
+def default_locator(source_location: LocatorT, target: str) -> LocatorT:
     """Return a new location from current_location and target."""
 
-    if current_location is None:
-        return target
-
-    elif isinstance(current_location, (pathlib.Path, str)):
-        current_location = pathlib.Path(current_location).resolve()
+    if isinstance(source_location, pathlib.Path):
+        current_location = pathlib.Path(source_location).resolve()
 
         if current_location.is_file():
-            current_path = current_location.parent
+            current_path = source_location.parent
         else:
-            current_path = current_location
+            current_path = source_location
 
         target = pathlib.Path(target)
         if target.is_absolute():
             raise ValueError(
-                f"Cannot refer to absolute paths in import statements ({current_location}, {target})."
+                f"Cannot refer to absolute paths in import statements ({source_location}, {target})."
             )
 
         tmp = (current_path / target).resolve()
         if not tmp.is_relative_to(current_path):
             raise ValueError(
-                f"Cannot refer to locations above the current location ({current_location}, {target})"
+                f"Cannot refer to locations above the current location ({source_location}, {target})"
             )
 
-        return tmp
+        return tmp.absolute()
 
-    elif isinstance(current_location, tuple) and len(current_location) == 2:
-        return current_location[0], target
+    elif isinstance(source_location, tuple) and len(source_location) == 2:
+        return source_location[0], target
 
     raise TypeError(
-        f"Unknown type {type(current_location)}, "
+        f"Cannot handle type {type(source_location)}, "
         "use str or pathlib.Path for files or "
         "(package: str, resource_name: str) tuple "
         "for a resource."
     )
 
 
-def parse_project(
-    parser: Parser, source_locations, *, locator=default_locator
-) -> ParsedProject:
-    """Parse a collection of files into a ParsedProject,
-    following the import statements in each of them
-    """
-
-    pending = []
-    for source_location in source_locations:
-        if isinstance(source_location, (pathlib.Path, str)):
-            p = pathlib.Path(source_location)
-            if p.is_absolute():
-                pending.append((None, source_location))
-            else:
-                pending.append((pathlib.Path.cwd(), source_location))
-        else:
-            pending.append(source_location)
-
-    out = {}
-    while pending:
-        origin, target = pending.pop()
-        out[(origin, target)] = parsed = parser.parse(locator(origin, target))
-        pending.extend(
-            (
-                (parsed.origin, el.target)
-                for el in parsed.parsed_source.filter_by(IncludeStatement)
-            )
-        )
-    return ParsedProject(out)
-
-
 def parse(
-    source_locations,
-    root_block_class,
+    entry_point,
+    spec,
     config=None,
     *,
     strip_spaces=True,
@@ -1015,13 +994,13 @@ def parse(
 ) -> ParsedProject:
     """Parse sources into a ParsedProject."""
 
-    if isinstance(root_block_class, type) and issubclass(root_block_class, Parser):
-        parser = root_block_class(config)
+    if isinstance(spec, type) and issubclass(spec, Parser):
+        parser = spec(config)
 
     else:
-        if isinstance(root_block_class, (tuple, list)):
+        if isinstance(spec, (tuple, list)):
 
-            for el in root_block_class:
+            for el in spec:
                 if not issubclass(el, (Block, ParsedStatement)):
                     raise TypeError(
                         "Elements in root_block_class must be of type Block or ParsedStatement, "
@@ -1032,28 +1011,24 @@ def parse(
             class CustomRootBlock(RootBlock):
                 pass
 
-            CustomRootBlock.__annotations__["body"] = Multi[ty.Union[root_block_class]]
+            CustomRootBlock.__annotations__["body"] = Multi[ty.Union[spec]]
 
-        elif isinstance(root_block_class, type) and issubclass(
-            root_block_class, RootBlock
-        ):
+        elif isinstance(spec, type) and issubclass(spec, RootBlock):
 
-            CustomRootBlock = root_block_class
+            CustomRootBlock = spec
 
-        elif isinstance(root_block_class, type) and issubclass(
-            root_block_class, (Block, ParsedStatement)
-        ):
+        elif isinstance(spec, type) and issubclass(spec, (Block, ParsedStatement)):
 
             @dataclass(frozen=True)
             class CustomRootBlock(RootBlock):
                 pass
 
-            CustomRootBlock.__annotations__["body"] = Multi[root_block_class]
+            CustomRootBlock.__annotations__["body"] = Multi[spec]
 
         else:
             raise TypeError(
                 "root_block_class must be of type RootBlock or tuple of type Block or ParsedStatement, "
-                f"not {type(root_block_class)}"
+                f"not {type(spec)}"
             )
 
         class CustomParser(Parser):
@@ -1067,7 +1042,35 @@ def parse(
 
         parser = CustomParser(config)
 
-    if isinstance(source_locations, (str, pathlib.Path)):
-        return parse_project(parser, [source_locations], locator=locator)
-    else:
-        return parse_project(parser, source_locations, locator=locator)
+    pp = ParsedProject()
+
+    pending = []
+    if isinstance(entry_point, (str, pathlib.Path)):
+        entry_point = pathlib.Path(entry_point)
+        if not entry_point.is_absolute():
+            entry_point = pathlib.Path.cwd() / entry_point
+    elif not (isinstance(entry_point, tuple) and len(entry_point) == 2):
+        raise TypeError(
+            f"Cannot handle type {type(entry_point)}, "
+            "use str or pathlib.Path for files or "
+            "(package: str, resource_name: str) tuple "
+            "for a resource."
+        )
+
+    pp[None] = parsed = parser.parse(entry_point)
+    pending.extend(
+        ((parsed.origin, el.target))
+        for el in parsed.parsed_source.filter_by(IncludeStatement)
+    )
+
+    while pending:
+        source_location, target = pending.pop(0)
+        pp[(source_location, target)] = parsed = parser.parse(
+            default_locator(source_location, target)
+        )
+        pending.extend(
+            ((parsed.origin, el.target))
+            for el in parsed.parsed_source.filter_by(IncludeStatement)
+        )
+
+    return pp
