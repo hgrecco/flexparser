@@ -139,16 +139,10 @@ class BeginContext(fp.ParsedStatement):
 
         if defaults:
             # TODO: Use config non_int_type
-            def to_num(val):
-                val = complex(val)
-                if not val.imag:
-                    return val.real
-                return val
-
             txt = defaults
             try:
                 defaults = (part.split("=") for part in defaults.strip("()").split(","))
-                defaults = {str(k).strip(): to_num(v) for k, v in defaults}
+                defaults = {str(k).strip(): config.to_number(v) for k, v in defaults}
             except (ValueError, TypeError) as exc:
                 return errors.DefinitionSyntaxError(
                     f"Could not parse Context definition defaults: '{txt}'", exc
