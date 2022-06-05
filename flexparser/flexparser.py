@@ -903,7 +903,10 @@ class IncludeStatement(ParsedStatement):
 
 
 class ParsedProject(
-    dict[ty.Optional[StrictLocationT], ty.Union[ParsedSourceFile, ParsedResource]]
+    ty.Dict[
+        ty.Optional[ty.Tuple[StrictLocationT, str]],
+        ty.Union[ParsedSourceFile, ParsedResource],
+    ]
 ):
     """Collection of files, independent or connected via IncludeStatement.
 
@@ -1056,7 +1059,7 @@ def parse(
     pp = ParsedProject()
 
     # : ty.List[Optional[ty.Union[LocatorT, str]], ...]
-    pending: ty.List[ty.Optional[ty.Tuple[StrictLocationT, str]]] = []
+    pending: ty.List[ty.Tuple[StrictLocationT, str]] = []
     if isinstance(entry_point, (str, pathlib.Path)):
         entry_point = pathlib.Path(entry_point)
         if not entry_point.is_absolute():
