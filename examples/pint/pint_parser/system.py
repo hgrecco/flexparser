@@ -16,7 +16,7 @@ class Rule(fp.ParsedStatement):
     old_unit_name: ty.Optional[str] = None
 
     @classmethod
-    def from_string(cls, s: str, config) -> fp.FromString[Rule]:
+    def from_string(cls, s: str) -> fp.FromString[Rule]:
         if ":" not in s:
             return cls(s.strip())
         parts = [p.strip() for p in s.split(":")]
@@ -41,7 +41,7 @@ class BeginSystem(fp.ParsedStatement):
     using_group_names: ty.Tuple[str, ...]
 
     @classmethod
-    def from_string(cls, s: str, config) -> fp.FromString[BeginSystem]:
+    def from_string(cls, s: str) -> fp.FromString[BeginSystem]:
         if not s.startswith("@system"):
             return None
 

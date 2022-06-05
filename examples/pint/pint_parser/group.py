@@ -23,7 +23,7 @@ class BeginGroup(fp.ParsedStatement):
     using_group_names: ty.Tuple[str, ...]
 
     @classmethod
-    def from_string(cls, s: str, config: common.Config) -> fp.FromString[BeginGroup]:
+    def from_string(cls, s: str) -> fp.FromString[BeginGroup]:
         if not s.startswith("@group"):
             return None
 

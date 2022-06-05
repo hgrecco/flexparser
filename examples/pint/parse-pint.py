@@ -19,9 +19,7 @@ class ImportDefinition(fp.IncludeStatement):
         return self.value
 
     @classmethod
-    def from_string(
-        cls, s: str, config: common.Config
-    ) -> fp.FromString[ImportDefinition]:
+    def from_string(cls, s: str) -> fp.FromString[ImportDefinition]:
         if s.startswith("@import"):
             return ImportDefinition(s[len("@import") :].strip())
         return None

@@ -61,7 +61,7 @@ class Equality(fp.ParsedStatement):
     rhs: str
 
     @classmethod
-    def from_string(cls, s: str, config: Config) -> fp.FromString[Equality]:
+    def from_string(cls, s: str) -> fp.FromString[Equality]:
         if "=" not in s:
             return None
         parts = [p.strip() for p in s.split("=")]
@@ -85,7 +85,7 @@ class Comment(fp.ParsedStatement):
     comment: str
 
     @classmethod
-    def from_string(cls, s: str, config: Config) -> fp.FromString[fp.ParsedStatement]:
+    def from_string(cls, s: str) -> fp.FromString[fp.ParsedStatement]:
         if not s.startswith("#"):
             return None
         return cls(s[1:].strip())
@@ -96,7 +96,7 @@ class EndDirectiveBlock(fp.ParsedStatement):
     """An EndDirectiveBlock is simply an "@end" statement."""
 
     @classmethod
-    def from_string(cls, s: str, config: Config) -> fp.FromString[EndDirectiveBlock]:
+    def from_string(cls, s: str) -> fp.FromString[EndDirectiveBlock]:
         if s == "@end":
             return cls()
         return None

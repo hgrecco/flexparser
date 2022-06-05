@@ -16,7 +16,7 @@ class BeginDefaults(fp.ParsedStatement):
     """
 
     @classmethod
-    def from_string(cls, s: str, config: common.Config) -> fp.FromString[BeginDefaults]:
+    def from_string(cls, s: str) -> fp.FromString[BeginDefaults]:
         if s.strip() == "@defaults":
             return cls()
         return None

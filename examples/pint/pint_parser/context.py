@@ -30,7 +30,7 @@ class _Relation:
     equation: str
 
     @classmethod
-    def _from_string(
+    def _from_string_and_context_sep(
         cls, s: str, config: common.Config, separator: str
     ) -> fp.FromString[_Relation]:
         if separator not in s:
@@ -76,10 +76,10 @@ class ForwardRelation(fp.ParsedStatement, _Relation):
         return False
 
     @classmethod
-    def from_string(
+    def from_string_and_config(
         cls, s: str, config: common.Config
     ) -> fp.FromString[ForwardRelation]:
-        return super()._from_string(s, config, "->")
+        return super()._from_string_and_context_sep(s, config, "->")
 
 
 @dataclass(frozen=True)
@@ -96,10 +96,10 @@ class BidirectionalRelation(fp.ParsedStatement, _Relation):
         return True
 
     @classmethod
-    def from_string(
+    def from_string_and_config(
         cls, s: str, config: common.Config
     ) -> fp.FromString[BidirectionalRelation]:
-        return super()._from_string(s, config, "<->")
+        return super()._from_string_and_context_sep(s, config, "<->")
 
 
 @dataclass(frozen=True)
@@ -118,7 +118,9 @@ class BeginContext(fp.ParsedStatement):
     defaults: Dict[str, numbers.Number]
 
     @classmethod
-    def from_string(cls, s: str, config: common.Config) -> fp.FromString[BeginContext]:
+    def from_string_and_config(
+        cls, s: str, config: common.Config
+    ) -> fp.FromString[BeginContext]:
         try:
             r = cls._header_re.search(s)
             if r is None:
@@ -136,7 +138,7 @@ class BeginContext(fp.ParsedStatement):
             )
 
         if defaults:
-
+            # TODO: Use config non_int_type
             def to_num(val):
                 val = complex(val)
                 if not val.imag:
