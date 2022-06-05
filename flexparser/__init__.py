@@ -2,9 +2,12 @@
     flexparser
     ~~~~~~~~~
 
-    Classes for persistent caching and invalidating cached objects,
-    which are built from a source object and a (potentially expensive)
-    conversion function.
+    Classes and functions to create parsers.
+
+    The idea is quite simple. You write a class for every type of content
+    (called here ``ParsedStatement``) you need to parse. Each class should
+    have a ``from_string`` constructor. We used extensively the ``typing``
+    module to make the output structure easy to use and less error prone.
 
     :copyright: 2022 by flexparser Authors, see AUTHORS for more details.
     :license: BSD, see LICENSE for more details.

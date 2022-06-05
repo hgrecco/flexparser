@@ -2,12 +2,14 @@
     flexparser.flexparser
     ~~~~~~~~~~~~~~~~~~~~~
 
-    There are three type of
+    Classes and functions to create parsers.
 
-    - statements: single lines handled by the Definition.from_string method.
-    - line directives
-    - block directives:
+    The idea is quite simple. You write a class for every type of content
+    (called here ``ParsedStatement``) you need to parse. Each class should
+    have a ``from_string`` constructor. We used extensively the ``typing``
+    module to make the output structure easy to use and less error prone.
 
+    For more information, take a look at https://github.com/hgrecco/flexparser
 
     :copyright: 2022 by flexparser Authors, see AUTHORS for more details.
     :license: BSD, see LICENSE for more details.
@@ -1002,12 +1004,51 @@ def parse(
     spec: SpecT,
     config=None,
     *,
-    strip_spaces=True,
+    strip_spaces: bool = True,
     delimiters=None,
-    locator=default_locator,
-    prefer_resource_as_file=True,
+    locator: ty.Callable[[StrictLocationT, str], StrictLocationT] = default_locator,
+    prefer_resource_as_file: bool = True,
 ) -> ParsedProject:
-    """Parse sources into a ParsedProject."""
+    """Parse sources into a ParsedProject dictionary.
+
+    Parameters
+    ----------
+    entry_point
+        file or resource, given as (package_name, resource_name).
+    spec
+        specification of the content to parse. Can be one of the following things:
+        - Parser class.
+        - Block or ParsedStatement derived class.
+        - Iterable of Block or ParsedStatement derived class.
+        - RootBlock derived class.
+    config
+        a configuration object that will be passed to `from_string_and_config`
+        classmethod.
+    strip_spaces : bool
+        if True, spaces will be stripped for each statement before calling
+        ``from_string_and_config``.
+    delimiters : dict
+        Sepecify how the source file is split into statements (See below).
+    locator : Callable
+        function that takes the current location and a target of an IncludeStatement
+        and returns a new location.
+    prefer_resource_as_file : bool
+        if True, resources will try to be located in the filesystem if
+        available.
+
+
+    Delimiters dictionary
+    ---------------------
+        The delimiters are specified with the keys of the delimiters dict.
+    The dict files can be used to further customize the iterator. Each
+    consist of a tuple of two elements:
+      1. A value of the DelimiterMode to indicate what to do with the
+         delimiter string: skip it, attach keep it with previous or next string
+      2. A boolean indicating if parsing should stop after fiSBT
+         encountering this delimiter.
+
+
+    """
 
     if isinstance(spec, type) and issubclass(spec, Parser):
         CustomParser = spec

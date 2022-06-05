@@ -306,17 +306,9 @@ A few things to notice:
 Multiple source files
 ---------------------
 
-Most projects have more than one source file and you can parse them all in one
-call. For example:
-
-.. code-block:: python
-
-    parsed = fp.parse(["source.txt", "other_source.txt"], , (AssigmentBlock, Equality))
-
-will produce a ``ParsedProject`` object with two elements.
-
-But in many cases, a file might refer to another that also need to be parsed
-(e.g. an `#include` statement in c). **flexparser** provides the ``IncludeStatement``
+Most projects have more than one source file internally connected.
+A file might refer to another that also need to be parsed (e.g. an
+`#include` statement in c). **flexparser** provides the ``IncludeStatement``
 base class specially for this purpose.
 
 .. code-block:: python
@@ -403,6 +395,41 @@ Explicit Block classes
         body: fp.Multi[typing.Union[AssigmentBlock, Equality]]
 
     parsed = fp.parse("source.txt", EntryBlock)
+
+
+Customizing parsing
+-------------------
+
+In certain cases you might want to leave to the user some configuration
+details. We have method for that!. Instead of overriding ``from_string``
+override ``from_string_and_config``. The second argument is an object
+that can be given to the parser, which in turn will be passed to each
+``ParsedStatement`` class.
+
+.. code-block:: python
+
+    @dataclass(frozen=True)
+    class NumericAssigment(fp.ParsedStatement):
+        """Parses the following `this <- other`
+        """
+
+        lhs: str
+        rhs: numbers.Number
+
+        @classmethod
+        def from_string_and_config(cls, s, config):
+            if "==" not in s:
+                # This means: I do not know how to parse it
+                # try with another ParsedStatement class.
+                return None
+            lhs, rhs = s.split("==")
+            return cls(lhs.strip(), config.numeric_type(rhs.strip()))
+
+    class Config:
+
+        numeric_type = float
+
+    parsed = fp.parse("source.txt", NumericAssigment, Config)
 
 ----
 
