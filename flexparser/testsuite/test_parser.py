@@ -26,10 +26,7 @@ def test_consume_err():
     assert pf.has_errors
 
     assert str(body[-1]) == "Could not parse 'x<>1.0' (line: 1, col: 0)"
-    assert (
-        str(body[-1].copy_with("blip.txt"))
-        == "Could not parse 'x<>1.0' in blip.txt (line: 1, col: 0)"
-    )
+    assert str(body[-1]) == "Could not parse 'x<>1.0' (line: 1, col: 0)"
 
 
 def test_consume():
@@ -92,9 +89,7 @@ def test_unfinished_block(tmp_path):
     assert psf.config is None
     assert psf.mtime == tmp_file.stat().st_mtime
     assert psf.filename == tmp_file
-    assert tuple(psf.localized_errors()) == (
-        fp.UnexpectedEOF().set_line_col(-1, -1).copy_with(tmp_file),
-    )
+    assert tuple(psf.localized_errors()) == (fp.UnexpectedEOF().set_line_col(-1, -1),)
     assert psf.origin == psf.filename
     # TODO:
     # assert psf.content_hash == hashlib.sha1(content.encode("utf-8")).hexdigest()

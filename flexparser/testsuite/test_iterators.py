@@ -20,6 +20,7 @@ def test_base_iterator():
     assert next(bi) == "spam"
     assert bi.peek() == "ham"
     assert next(bi) == "ham"
+    assert bi.peek("blip") == "blip"
     with pytest.raises(StopIteration):
         bi.peek()
     with pytest.raises(StopIteration):

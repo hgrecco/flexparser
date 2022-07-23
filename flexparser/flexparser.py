@@ -65,26 +65,6 @@ class Element:
 class ParsingError(Element, Exception):
     """Base class for all exceptions in this package."""
 
-    origin: ty.Union[str, ty.Tuple[str, str], pathlib.Path] = dataclasses.field(
-        init=False, default=""
-    )
-
-    @property
-    def origin_(self) -> str:
-        if isinstance(self.origin, tuple):
-            return f"resource (package: {self.origin[0]}, name: {self.origin[1]})"
-        return str(self.origin)
-
-    def copy_with(self, origin):
-        d = dataclasses.asdict(self)
-        d.pop("lineno")
-        d.pop("colno")
-        d.pop("origin")
-        obj = self.__class__(**d)
-        obj.set_line_col(self.lineno, self.colno)
-        object.__setattr__(obj, "origin", origin)
-        return obj
-
     def __str__(self):
         return Element.__str__(self)
 
@@ -96,8 +76,6 @@ class UnknownStatement(ParsingError):
     statement: str
 
     def __str__(self):
-        if self.origin:
-            return f"Could not parse '{self.statement}' in {self.origin_} (line: {self.lineno}, col: {self.colno})"
         return f"Could not parse '{self.statement}' (line: {self.lineno}, col: {self.colno})"
 
     @classmethod
@@ -633,6 +611,7 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
         return UnexpectedEOF()
 
 
+@dataclass(frozen=True)
 class BOS(ParsedStatement[CT]):
     """Beginning of sequence."""
 
@@ -722,7 +701,12 @@ class _ParsedCommon(ty.Generic[RBT, CT]):
 
     def localized_errors(self):
         for err in self.parsed_source.errors:
-            yield err.copy_with(self.origin)
+            yield err
+
+    #
+    # @property
+    # def origin(self) -> ResourceT:
+    #     return self.package, self.resource_name
 
 
 @dataclass(frozen=True)
