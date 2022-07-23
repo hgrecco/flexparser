@@ -1,3 +1,4 @@
+import hashlib
 import pathlib
 from dataclasses import dataclass
 
@@ -13,6 +14,19 @@ from flexparser.testsuite.common import (
     MyRoot,
     Open,
 )
+
+
+def _bosser(content: bytes):
+    return fp.BOS(fp.Hash.from_bytes(hashlib.blake2b, content))
+
+
+def _compare(arr1, arr2):
+    assert len(arr1) == len(arr2)
+    for a1, a2 in zip(arr1, arr2):
+        if isinstance(a1, fp.BOS) and isinstance(a2, fp.BOS):
+            assert a1.content_hash == a2.content_hash
+        else:
+            assert a1 == a2
 
 
 def test_locator():
@@ -44,9 +58,9 @@ def test_locator():
 
 @pytest.mark.parametrize("definition", [MyRoot, (Comment, EqualFloat), MyParser])
 def test_parse1(tmp_path, definition):
-    content = "# hola\nx=1.0"
+    content = b"# hola\nx=1.0"
     tmp_file = tmp_path / "bla.txt"
-    tmp_file.write_text(content)
+    tmp_file.write_bytes(content)
 
     pp = fp.parse(tmp_file, definition)
 
@@ -55,10 +69,10 @@ def test_parse1(tmp_path, definition):
     psf = pp[list(pp.keys())[0]]
     assert not psf.has_errors
     assert psf.config is None
-    assert psf.mtime == tmp_file.stat().st_mtime
-    assert psf.filename == tmp_file
-    assert tuple(psf.localized_errors()) == ()
-    assert psf.origin == psf.filename
+    assert psf.parsed_source.opening.mtime == tmp_file.stat().st_mtime
+    assert psf.parsed_source.opening.path == tmp_file
+    assert tuple(psf.errors()) == ()
+    assert psf.location == tmp_file
 
     # TODO:
     # assert psf.content_hash == hashlib.sha1(content.encode("utf-8")).hexdigest()
@@ -75,19 +89,22 @@ def test_parse1(tmp_path, definition):
     assert tuple(mb) == (mb.opening, *body, mb.closing)
     assert not mb.has_errors
 
-    assert tuple(pp.iter_statements()) == (
-        fp.BOS().set_line_col(0, 0),
-        Comment("# hola").set_line_col(0, 0),
-        EqualFloat("x", 1.0).set_line_col(1, 0),
-        fp.EOS().set_line_col(-1, -1),
+    _compare(
+        tuple(pp.iter_statements()),
+        (
+            _bosser(content).set_line_col(0, 0),
+            Comment("# hola").set_line_col(0, 0),
+            EqualFloat("x", 1.0).set_line_col(1, 0),
+            fp.EOS().set_line_col(-1, -1),
+        ),
     )
 
 
 @pytest.mark.parametrize("definition", [MyRoot, EqualFloat, MyParser])
 def test_parse2(tmp_path, definition):
-    content = "y = 2.0\nx=1.0"
+    content = b"y = 2.0\nx=1.0"
     tmp_file = tmp_path / "bla.txt"
-    tmp_file.write_text(content)
+    tmp_file.write_bytes(content)
 
     pp = fp.parse(tmp_file, definition)
 
@@ -97,10 +114,10 @@ def test_parse2(tmp_path, definition):
     psf = pp[None]
     assert not psf.has_errors
     assert psf.config is None
-    assert psf.mtime == tmp_file.stat().st_mtime
-    assert psf.filename == tmp_file
-    assert tuple(psf.localized_errors()) == ()
-    assert psf.origin == psf.filename
+    assert psf.parsed_source.opening.mtime == tmp_file.stat().st_mtime
+    assert psf.parsed_source.opening.path == tmp_file
+    assert tuple(psf.errors()) == ()
+    assert psf.location == tmp_file
 
     # TODO:
     # assert psf.content_hash == hashlib.sha1(content.encode("utf-8")).hexdigest()
@@ -117,11 +134,14 @@ def test_parse2(tmp_path, definition):
     assert tuple(mb) == (mb.opening, *body, mb.closing)
     assert not mb.has_errors
 
-    assert tuple(pp.iter_statements()) == (
-        fp.BOS().set_line_col(0, 0),
-        EqualFloat("y", 2.0).set_line_col(0, 0),
-        EqualFloat("x", 1.0).set_line_col(1, 0),
-        fp.EOS().set_line_col(-1, -1),
+    _compare(
+        tuple(pp.iter_statements()),
+        (
+            _bosser(content).set_line_col(0, 0),
+            EqualFloat("y", 2.0).set_line_col(0, 0),
+            EqualFloat("x", 1.0).set_line_col(1, 0),
+            fp.EOS().set_line_col(-1, -1),
+        ),
     )
 
 
@@ -132,23 +152,23 @@ def test_parse2(tmp_path, definition):
     ],
 )
 def test_parse3(tmp_path, definition):
-    content = "@begin\ny = 2.0\nx=1.0\n@end"
+    content = b"@begin\ny = 2.0\nx=1.0\n@end"
     tmp_file = tmp_path / "bla.txt"
-    tmp_file.write_text(content)
+    tmp_file.write_bytes(content)
 
     pp = fp.parse(tmp_file, definition)
     assert not pp.has_errors
     assert len(pp) == 1
-    assert tuple(pp.localized_errors()) == ()
+    assert tuple(pp.errors()) == ()
 
     assert None in pp
     psf = pp[None]
     assert not psf.has_errors
     assert psf.config is None
-    assert psf.mtime == tmp_file.stat().st_mtime
-    assert psf.filename == tmp_file
-    assert tuple(psf.localized_errors()) == ()
-    assert psf.origin == psf.filename
+    assert psf.parsed_source.opening.mtime == tmp_file.stat().st_mtime
+    assert psf.parsed_source.opening.path == tmp_file
+    assert tuple(psf.errors()) == ()
+    assert psf.location == tmp_file
 
     # TODO:
     # assert psf.content_hash == hashlib.sha1(content.encode("utf-8")).hexdigest()
@@ -167,13 +187,16 @@ def test_parse3(tmp_path, definition):
     assert mb.closing == Close().set_line_col(3, 0)
     assert not mb.has_errors
 
-    assert tuple(pp.iter_statements()) == (
-        fp.BOS().set_line_col(0, 0),
-        Open().set_line_col(0, 0),
-        EqualFloat("y", 2.0).set_line_col(1, 0),
-        EqualFloat("x", 1.0).set_line_col(2, 0),
-        Close().set_line_col(3, 0),
-        fp.EOS().set_line_col(-1, -1),
+    _compare(
+        tuple(pp.iter_statements()),
+        (
+            _bosser(content).set_line_col(0, 0),
+            Open().set_line_col(0, 0),
+            EqualFloat("y", 2.0).set_line_col(1, 0),
+            EqualFloat("x", 1.0).set_line_col(2, 0),
+            Close().set_line_col(3, 0),
+            fp.EOS().set_line_col(-1, -1),
+        ),
     )
 
 
@@ -192,10 +215,13 @@ def test_include_file(tmp_path):
             if s.startswith("include"):
                 return cls(s[len("include ") :].strip())
 
+    content1 = b"include bla2.txt\n# chau"
+    content2 = b"# hola\nx=1.0"
+
     tmp_file1 = tmp_path / "bla1.txt"
     tmp_file2 = tmp_path / "bla2.txt"
-    tmp_file1.write_text("include bla2.txt\n# chau")
-    tmp_file2.write_text("# hola\nx=1.0")
+    tmp_file1.write_bytes(content1)
+    tmp_file2.write_bytes(content2)
 
     pp = fp.parse(tmp_file1, (Include, Comment, EqualFloat))
 
@@ -204,14 +230,17 @@ def test_include_file(tmp_path):
 
     assert len(pp) == 2
 
-    assert tuple(pp.iter_statements()) == (
-        fp.BOS().set_line_col(0, 0),
-        fp.BOS().set_line_col(0, 0),
-        Comment("# hola").set_line_col(0, 0),
-        EqualFloat("x", 1.0).set_line_col(1, 0),
-        fp.EOS().set_line_col(-1, -1),
-        Comment("# chau").set_line_col(1, 0),
-        fp.EOS().set_line_col(-1, -1),
+    _compare(
+        tuple(pp.iter_statements()),
+        (
+            _bosser(content1).set_line_col(0, 0),
+            _bosser(content2).set_line_col(0, 0),
+            Comment("# hola").set_line_col(0, 0),
+            EqualFloat("x", 1.0).set_line_col(1, 0),
+            fp.EOS().set_line_col(-1, -1),
+            Comment("# chau").set_line_col(1, 0),
+            fp.EOS().set_line_col(-1, -1),
+        ),
     )
 
 
@@ -230,16 +259,23 @@ def test_resources(tmp_path):
             if s.startswith("include"):
                 return cls(s[len("include ") :].strip())
 
+    # see files included in the textsuite.
+    content1 = b"include bla2.txt\n# chau\n"
+    content2 = b"# hola\nx=1.0\n"
+
     pp = fp.parse(("flexparser.testsuite", "bla1.txt"), (Include, Comment, EqualFloat))
 
     assert len(pp) == 2
 
-    assert tuple(pp.iter_statements()) == (
-        fp.BOS().set_line_col(0, 0),
-        fp.BOS().set_line_col(0, 0),
-        Comment("# hola").set_line_col(0, 0),
-        EqualFloat("x", 1.0).set_line_col(1, 0),
-        fp.EOS().set_line_col(-1, -1),
-        Comment("# chau").set_line_col(1, 0),
-        fp.EOS().set_line_col(-1, -1),
+    _compare(
+        tuple(pp.iter_statements()),
+        (
+            _bosser(content1).set_line_col(0, 0),
+            _bosser(content2).set_line_col(0, 0),
+            Comment("# hola").set_line_col(0, 0),
+            EqualFloat("x", 1.0).set_line_col(1, 0),
+            fp.EOS().set_line_col(-1, -1),
+            Comment("# chau").set_line_col(1, 0),
+            fp.EOS().set_line_col(-1, -1),
+        ),
     )

@@ -1,3 +1,5 @@
+import pytest
+
 from flexparser import flexparser as fp
 from flexparser.testsuite.common import (
     Comment,
@@ -8,12 +10,13 @@ from flexparser.testsuite.common import (
 )
 
 
-def test_consume_err():
+@pytest.mark.parametrize(
+    "content", (b"# hola\nx<>1.0", b"# hola\r\nx<>1.0", b"# hola\rx<>1.0")
+)
+def test_consume_err(content):
     myparser = MyParser(None)
 
-    lines = "# hola\nx<>1.0".split("\n")
-    si = fp.SequenceIterator.from_lines(lines)
-    pf = myparser.consume(si)
+    pf = myparser.parse_bytes(content).parsed_source
     assert isinstance(pf.opening, fp.BOS)
     assert isinstance(pf.closing, fp.EOS)
     body = tuple(pf.body)
@@ -29,12 +32,13 @@ def test_consume_err():
     assert str(body[-1]) == "Could not parse 'x<>1.0' (line: 1, col: 0)"
 
 
-def test_consume():
+@pytest.mark.parametrize(
+    "content", (b"# hola\nx=1.0", b"# hola\r\nx=1.0", b"# hola\rx=1.0")
+)
+def test_consume(content):
     myparser = MyParser(None)
 
-    lines = "# hola\nx=1.0".split("\n")
-    si = fp.SequenceIterator.from_lines(lines)
-    pf = myparser.consume(si)
+    pf = myparser.parse_bytes(content).parsed_source
     assert isinstance(pf.opening, fp.BOS)
     assert isinstance(pf.closing, fp.EOS)
     body = tuple(pf.body)
@@ -47,19 +51,24 @@ def test_consume():
     assert not pf.has_errors
 
 
-def test_parse(tmp_path):
+@pytest.mark.parametrize("use_string", (True, False))
+def test_parse(tmp_path, use_string):
     content = "# hola\nx=1.0"
     tmp_file = tmp_path / "bla.txt"
     tmp_file.write_text(content)
     myparser = MyParser(None)
 
-    psf = myparser.parse(tmp_file)
+    if use_string:
+        psf = myparser.parse(str(tmp_file))
+    else:
+        psf = myparser.parse(tmp_file)
+
     assert not psf.has_errors
     assert psf.config is None
-    assert psf.mtime == tmp_file.stat().st_mtime
-    assert psf.filename == tmp_file
-    assert tuple(psf.localized_errors()) == ()
-    assert psf.origin == psf.filename
+    assert psf.parsed_source.opening.mtime == tmp_file.stat().st_mtime
+    assert psf.parsed_source.opening.path == tmp_file
+    assert tuple(psf.errors()) == ()
+    assert psf.location == tmp_file
 
     # TODO:
     # assert psf.content_hash == hashlib.sha1(content.encode("utf-8")).hexdigest()
@@ -87,12 +96,10 @@ def test_unfinished_block(tmp_path):
     psf = myparser.parse(tmp_file)
     assert psf.has_errors
     assert psf.config is None
-    assert psf.mtime == tmp_file.stat().st_mtime
-    assert psf.filename == tmp_file
-    assert tuple(psf.localized_errors()) == (fp.UnexpectedEOF().set_line_col(-1, -1),)
-    assert psf.origin == psf.filename
-    # TODO:
-    # assert psf.content_hash == hashlib.sha1(content.encode("utf-8")).hexdigest()
+    assert psf.parsed_source.opening.mtime == tmp_file.stat().st_mtime
+    assert psf.parsed_source.opening.path == tmp_file
+    assert tuple(psf.errors()) == (fp.UnexpectedEOF().set_line_col(-1, -1),)
+    assert psf.location == tmp_file
 
     mb = psf.parsed_source
     assert isinstance(mb.opening, fp.BOS)
@@ -107,14 +114,23 @@ def test_unfinished_block(tmp_path):
     )
 
 
-def test_parse_resource():
+@pytest.mark.parametrize("use_resource", (True, False))
+def test_parse_resource(use_resource):
     myparser = MyParser(None)
 
-    psf = myparser.parse_resource("flexparser.testsuite", "bla2.txt")
+    location = ("flexparser.testsuite", "bla2.txt")
+
+    if use_resource:
+        psf = myparser.parse_resource(*location)
+    else:
+        psf = myparser.parse(location)
+
     assert not psf.has_errors
     assert psf.config is None
-    assert tuple(psf.localized_errors()) == ()
-    assert psf.origin == ("flexparser.testsuite", "bla2.txt")
+    assert tuple(psf.errors()) == ()
+
+    if use_resource:
+        assert psf.location == location
 
     # TODO:
     # assert psf.content_hash == hashlib.sha1(content.encode("utf-8")).hexdigest()

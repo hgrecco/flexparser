@@ -1,6 +1,3 @@
-import hashlib
-import pickle
-
 import pytest
 
 import flexparser.flexparser as fp
@@ -114,15 +111,3 @@ def test_sequence_iterator():
     si = fp.SequenceIterator.from_lines("spam \n ham".split("\n"))
     assert si.peek() == (0, 0, "spam")
     assert tuple(si) == ((0, 0, "spam"), (1, 0, "ham"))
-
-
-def test_hash_sequence_iterator():
-    content = "spam \n ham"
-    si = fp.SequenceIterator.from_lines(content.split("\n"))
-    hsi = fp.HashSequenceIterator(si)
-    out = ((0, 0, "spam"), (1, 0, "ham"))
-    assert tuple(hsi) == ((0, 0, "spam"), (1, 0, "ham"))
-    hasher = hashlib.sha1()
-    for o in out:
-        hasher.update(pickle.dumps(o))
-    assert hsi.hexdigest() == hasher.hexdigest()

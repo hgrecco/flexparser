@@ -68,5 +68,5 @@ for x in parsed.iter_statements():
 print("\n")
 print("Errors")
 print("------")
-for p in parsed.localized_errors():
+for p in parsed.errors():
     print(p)

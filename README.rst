@@ -134,11 +134,11 @@ will produce the following output:
 
 .. code-block:: text
 
-    BOS(lineno=0, colno=0)
+    BOF(lineno=0, colno=0, content_hash=Hash(algorithm_name='blake2b', hexdigest='37bc23cde7cad3ece96b7abf64906c84decc116de1e0486679eb6ca696f233a403f756e2e431063c82abed4f0e342294c2fe71af69111faea3765b78cb90c03f'), path=PosixPath('/Users/grecco/Documents/code/flexparser/examples/in_readme/source.txt'), mtime=1658550284.9419456)
     Assigment(lineno=1, colno=0, lhs='one', rhs='other')
-    InvalidIdentifier(lineno=2, colno=0, origin='', value='2two')
+    InvalidIdentifier(lineno=2, colno=0, value='2two')
     Assigment(lineno=3, colno=0, lhs='three', rhs='newvalue')
-    UnknownStatement(lineno=4, colno=0, origin='', statement='one == three')
+    UnknownStatement(lineno=4, colno=0, statement='one == three')
     EOS(lineno=-1, colno=-1)
 
 The result is a collection of ``ParsedStatement`` or ``ParsingError`` (flanked by

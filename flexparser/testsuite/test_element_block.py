@@ -63,7 +63,7 @@ def test_stream_block(klass):
     lines = "# hola\nx=1.0".split("\n")
     si = fp.SequenceIterator.from_lines(lines)
 
-    mb = klass.consume(si, None)
+    mb = klass.consume_body_closing(fp.BOS(fp.Hash.nullhash()), si, None)
     assert isinstance(mb.opening, fp.BOS)
     assert isinstance(mb.closing, fp.EOS)
     body = tuple(mb.body)
@@ -81,7 +81,7 @@ def test_stream_block_error(klass):
     lines = "# hola\nx=1f0".split("\n")
     si = fp.SequenceIterator.from_lines(lines)
 
-    mb = klass.consume(si, None)
+    mb = klass.consume_body_closing(fp.BOS(fp.Hash.nullhash()), si, None)
     assert isinstance(mb.opening, fp.BOS)
     assert isinstance(mb.closing, fp.EOS)
     body = tuple(mb.body)

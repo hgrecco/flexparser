@@ -22,10 +22,10 @@ import dataclasses
 import enum
 import functools
 import hashlib
+import hmac
 import inspect
 import logging
 import pathlib
-import pickle
 import re
 import typing as ty
 from collections.abc import Iterable, Iterator
@@ -90,9 +90,36 @@ class UnexpectedEOF(ParsingError):
     """End of file was found within an open block."""
 
 
-#################
-# Useful methods
-#################
+#############################
+# Useful methods and classes
+#############################
+
+
+@dataclass(frozen=True)
+class Hash:
+    algorithm_name: str
+    hexdigest: str
+
+    def __eq__(self, other: Hash):
+        return (
+            isinstance(other, Hash)
+            and self.algorithm_name != ""
+            and self.algorithm_name == other.algorithm_name
+            and hmac.compare_digest(self.hexdigest, other.hexdigest)
+        )
+
+    @classmethod
+    def from_bytes(cls, algorithm, b: bytes):
+        hasher = algorithm(b)
+        return cls(hasher.name, hasher.hexdigest())
+
+    @classmethod
+    def from_file_pointer(cls, algorithm, fp: ty.BinaryIO):
+        return cls.from_bytes(algorithm, fp.read())
+
+    @classmethod
+    def nullhash(cls):
+        return cls("", "")
 
 
 def _yield_types(
@@ -331,7 +358,7 @@ class SequenceIterator(BaseIterator[Tuple[int, int, str]]):
     def from_lines(cls, lines: Iterable[str]):
         it = (
             (lineno, colno, s)
-            for lineno, line in enumerate(lines)
+            for lineno, line in enumerate(lines, 1)
             for (colno, s) in cls._statement_iterator_class.from_line(line)
             if s
         )
@@ -347,29 +374,6 @@ class SequenceIterator(BaseIterator[Tuple[int, int, str]]):
             (cls,),
             dict(_statement_iterator_class=statement_iterator_class),
         )
-
-
-class HashIterator(BaseIterator[T]):
-    """Iterates through an interator while hashing the content."""
-
-    def __init__(self, iterator: Iterator[T]):
-        super().__init__(iterator)
-        self._hasher = hashlib.sha1()
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        el = super().__next__()
-        self._hasher.update(pickle.dumps(el))
-        return el
-
-    def hexdigest(self):
-        return self._hasher.hexdigest()
-
-
-class HashSequenceIterator(HashIterator, SequenceIterator):
-    pass
 
 
 ###########
@@ -580,18 +584,9 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
         return None
 
     @classmethod
-    def consume(
-        cls: Type[BT], sequence_iterator: SequenceIterator, config: CT
-    ) -> Optional[BT]:
-        """Try consume the block.
-
-        Possible outcomes:
-        1. The opening was not matched, return None.
-        2. A subclass of Block, where body and closing migh contain errors.
-        """
-        opening = cls.consume_opening(sequence_iterator, config)
-        if opening is None:
-            return None
+    def consume_body_closing(
+        cls: Type[BT], opening: OPST, sequence_iterator: SequenceIterator, config: CT
+    ) -> BT:
         body = []
         closing = None
         while closing is None:
@@ -607,25 +602,81 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
         return cls(opening, tuple(body), closing)
 
     @classmethod
+    def consume(
+        cls: Type[BT], sequence_iterator: SequenceIterator, config: CT
+    ) -> Optional[BT]:
+        """Try consume the block.
+
+        Possible outcomes:
+        1. The opening was not matched, return None.
+        2. A subclass of Block, where body and closing migh contain errors.
+        """
+        opening = cls.consume_opening(sequence_iterator, config)
+        if opening is None:
+            return None
+
+        return cls.consume_body_closing(opening, sequence_iterator, config)
+
+    @classmethod
     def on_stop_iteration(cls, config):
         return UnexpectedEOF()
 
 
 @dataclass(frozen=True)
 class BOS(ParsedStatement[CT]):
-    """Beginning of sequence."""
+    """Beginning of source."""
+
+    # Hasher algorithm name and hexdigest
+    content_hash: Hash
 
     @classmethod
     def from_string_and_config(cls: Type[PST], s: str, config: CT) -> FromString[PST]:
-        return cls()
+        raise RuntimeError("BOS cannot be constructed from_string_and_config")
+
+    @property
+    def location(self) -> SourceLocationT:
+        return "<undefined>"
 
 
+@dataclass(frozen=True)
+class BOF(BOS):
+    """Beginning of file."""
+
+    path: pathlib.Path
+
+    # Modification time of the file.
+    mtime: float
+
+    @property
+    def location(self) -> SourceLocationT:
+        return self.path
+
+
+@dataclass(frozen=True)
+class BOR(BOS):
+    """Beginning of resource."""
+
+    package: str
+    resource_name: str
+
+    @property
+    def location(self) -> SourceLocationT:
+        return self.package, self.resource_name
+
+
+@dataclass(frozen=True)
 class EOS(ParsedStatement[CT]):
     """End of sequence."""
 
     @classmethod
     def from_string_and_config(cls: Type[PST], s: str, config: CT) -> FromString[PST]:
         return cls()
+
+    def __str__(self):
+        return "EOS()"
+
+    def __repr__(self):
+        return "EOS()"
 
 
 class RootBlock(ty.Generic[IPST, CT], Block[BOS, IPST, EOS, CT]):
@@ -649,13 +700,15 @@ class RootBlock(ty.Generic[IPST, CT], Block[BOS, IPST, EOS, CT]):
     def consume_opening(
         cls: Type[RBT], sequence_iterator: SequenceIterator, config: CT
     ) -> NullableConsume[BOS]:
-        return BOS().set_line_col(0, 0)
+        raise RuntimeError(
+            "Implementation error, 'RootBlock.consume_opening' should never be called"
+        )
 
     @classmethod
     def consume(cls: Type[RBT], sequence_iterator: SequenceIterator, config: CT) -> RBT:
         block = super().consume(sequence_iterator, config)
         if block is None:
-            raise ValueError(
+            raise RuntimeError(
                 "Implementation error, 'RootBlock.consume' should never return None"
             )
         return block
@@ -681,60 +734,23 @@ SourceLocationT = ty.Union[str, StrictLocationT]
 
 
 @dataclass(frozen=True)
-class _ParsedCommon(ty.Generic[RBT, CT]):
+class ParsedSource(ty.Generic[RBT, CT]):
 
     parsed_source: RBT
-
-    # SHA-1 hash.
-    content_hash: str
 
     # Parser configuration.
     config: CT
 
     @property
-    def origin(self) -> StrictLocationT:
-        raise NotImplementedError
+    def location(self) -> StrictLocationT:
+        return self.parsed_source.opening.location
 
     @cached_property
     def has_errors(self) -> bool:
         return self.parsed_source.has_errors
 
-    def localized_errors(self):
-        for err in self.parsed_source.errors:
-            yield err
-
-    #
-    # @property
-    # def origin(self) -> ResourceT:
-    #     return self.package, self.resource_name
-
-
-@dataclass(frozen=True)
-class ParsedSourceFile(_ParsedCommon[RBT, CT], ty.Generic[RBT, CT]):
-    """The parsed representation of a file."""
-
-    # Fullpath of the original file.
-    filename: pathlib.Path
-
-    # Modification time of the file.
-    mtime: float
-
-    @property
-    def origin(self) -> pathlib.Path:
-        return self.filename
-
-
-@dataclass(frozen=True)
-class ParsedResource(_ParsedCommon[RBT, CT], ty.Generic[RBT, CT]):
-    """The parsed representation of a python resource."""
-
-    # Fullpath of the original file, None if a text was provided
-    package: str
-    resource_name: str
-
-    @property
-    def origin(self) -> ResourceT:
-        return self.package, self.resource_name
+    def errors(self):
+        yield from self.parsed_source.errors
 
 
 @dataclass(frozen=True)
@@ -765,16 +781,14 @@ class Parser(ty.Generic[RBT, CT]):
     #: try to open resources as files.
     _prefer_resource_as_file: bool
 
+    #: parser algorithm to us. Must be a callable member of hashlib
+    _hasher = hashlib.blake2b
+
     def __init__(self, config: CT, prefer_resource_as_file=True):
         self._config = config
         self._prefer_resource_as_file = prefer_resource_as_file
 
-    def consume(self, sequence_iterator: SequenceIterator) -> RBT:
-        return self._root_block_class.consume(sequence_iterator, self._config)
-
-    def parse(
-        self, source_location: SourceLocationT
-    ) -> ty.Union[ParsedSourceFile[RBT, CT], ParsedResource[RBT, CT]]:
+    def parse(self, source_location: SourceLocationT) -> ParsedSource[RBT, CT]:
         """Parse a file into a ParsedSourceFile or ParsedResource.
 
         Parameters
@@ -804,7 +818,22 @@ class Parser(ty.Generic[RBT, CT]):
             "for a resource."
         )
 
-    def parse_file(self, path: pathlib.Path) -> ParsedSourceFile[RBT, CT]:
+    def parse_bytes(self, b: bytes, bos: BOS = None) -> ParsedSource[RBT, CT]:
+        if bos is None:
+            bos = BOS(Hash.from_bytes(self._hasher, b))
+
+        sic = self._sequence_iterator_class.from_lines(
+            map(lambda p: p.decode(self._encoding), b.splitlines(keepends=False))
+        )
+
+        parsed = self._root_block_class.consume_body_closing(bos, sic, self._config)
+
+        return ParsedSource(
+            parsed,
+            self._config,
+        )
+
+    def parse_file(self, path: pathlib.Path) -> ParsedSource[RBT, CT]:
         """Parse a file into a ParsedSourceFile.
 
         Parameters
@@ -812,23 +841,17 @@ class Parser(ty.Generic[RBT, CT]):
         path
             path of the file.
         """
-        with path.open(mode="r", encoding=self._encoding) as fi:
-            sic = self._sequence_iterator_class.from_lines(
-                map(lambda s: s.strip("\r\n"), fi)
-            )
-            hsi = HashSequenceIterator(sic)
-            body = self.consume(hsi)
-            return ParsedSourceFile(
-                body,
-                hsi.hexdigest(),
-                self._config,
-                path,
-                path.stat().st_mtime,
-            )
+        with path.open(mode="rb") as fi:
+            content = fi.read()
+
+        bos = BOF(
+            Hash.from_bytes(self._hasher, content), path, path.stat().st_mtime
+        ).set_line_col(0, 0)
+        return self.parse_bytes(content, bos)
 
     def parse_resource_from_file(
         self, package: str, resource_name: str
-    ) -> ParsedSourceFile[RBT, CT]:
+    ) -> ParsedSource[RBT, CT]:
         """Parse a resource into a ParsedSourceFile, opening as a file.
 
         Parameters
@@ -846,9 +869,7 @@ class Parser(ty.Generic[RBT, CT]):
 
         raise CannotParseResourceAsFile(package, resource_name)
 
-    def parse_resource(
-        self, package: str, resource_name: str
-    ) -> ParsedResource[RBT, CT]:
+    def parse_resource(self, package: str, resource_name: str) -> ParsedSource[RBT, CT]:
         """Parse a resource into a ParsedResource.
 
         Parameters
@@ -858,19 +879,14 @@ class Parser(ty.Generic[RBT, CT]):
         resource_name
             name of the resource
         """
-        with resources.open_text(package, resource_name, encoding=self._encoding) as fi:
-            sic = self._sequence_iterator_class.from_lines(
-                map(lambda s: s.strip("\r\n"), fi)
-            )
-            hsi = HashSequenceIterator(sic)
-            body = self.consume(hsi)
-        return ParsedResource(
-            body,
-            hsi.hexdigest(),
-            self._config,
-            package,
-            resource_name,
-        )
+        with resources.open_binary(package, resource_name) as fi:
+            content = fi.read()
+
+        bos = BOR(
+            Hash.from_bytes(self._hasher, content), package, resource_name
+        ).set_line_col(0, 0)
+
+        return self.parse_bytes(content, bos)
 
 
 ##########
@@ -891,7 +907,7 @@ class IncludeStatement(ParsedStatement):
 class ParsedProject(
     ty.Dict[
         ty.Optional[ty.Tuple[StrictLocationT, str]],
-        ty.Union[ParsedSourceFile, ParsedResource],
+        ParsedSource,
     ]
 ):
     """Collection of files, independent or connected via IncludeStatement.
@@ -906,9 +922,9 @@ class ParsedProject(
     def has_errors(self) -> bool:
         return any(el.has_errors for el in self.values())
 
-    def localized_errors(self):
+    def errors(self):
         for el in self.values():
-            yield from el.localized_errors()
+            yield from el.errors()
 
     def _iter_statements(self, items, seen, include_only_once):
         """Iter all definitions in the order they appear,
@@ -918,7 +934,7 @@ class ParsedProject(
             seen.add(source_location)
             for parsed_statement in parsed.parsed_source:
                 if isinstance(parsed_statement, IncludeStatement):
-                    location = parsed.origin, parsed_statement.target
+                    location = parsed.location, parsed_statement.target
                     if location in seen and include_only_once:
                         raise ValueError(f"{location} was already included.")
                     yield from self._iter_statements(
@@ -1100,7 +1116,7 @@ def parse(
 
     pp[None] = parsed = parser.parse(entry_point)
     pending.extend(
-        (parsed.origin, el.target)
+        (parsed.location, el.target)
         for el in parsed.parsed_source.filter_by(IncludeStatement)
     )
 
@@ -1110,7 +1126,7 @@ def parse(
             locator(source_location, target)
         )
         pending.extend(
-            (parsed.origin, el.target)
+            (parsed.location, el.target)
             for el in parsed.parsed_source.filter_by(IncludeStatement)
         )
 

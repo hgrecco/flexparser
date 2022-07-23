@@ -1,3 +1,4 @@
+import hashlib
 import re
 import typing
 
@@ -125,3 +126,16 @@ def test_isplit_mode_break():
         (0, "spam!"),
         (5, "is#ham"),
     )
+
+
+def test_hash_object():
+    content = b"spam \n ham"
+    hasher = hashlib.sha1
+
+    ho = fp.Hash.from_bytes(hashlib.sha1, content)
+    hd = hasher(content).hexdigest()
+    assert ho.algorithm_name == "sha1"
+    assert ho.hexdigest == hd
+    assert ho != hd
+    assert ho != fp.Hash.from_bytes(hashlib.md5, content)
+    assert ho == fp.Hash.from_bytes(hashlib.sha1, content)
