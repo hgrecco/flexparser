@@ -26,8 +26,8 @@
 flexparser
 ==========
 
-Why writing another parser? I have asked myself the same question while
-working in this project. It is clear that there are excellent parsers out
+Why write another parser? I have asked myself the same question while
+working on this project. It is clear that there are excellent parsers out
 there but I wanted to experiment with another way of writing them.
 
 The idea is quite simple. You write a class for every type of content
@@ -56,7 +56,9 @@ For example:
             lhs, rhs = s.split("<-")
             return cls(lhs.strip(), rhs.strip())
 
-(using a frozen dataclass is not necessary but I found it very useful)
+(using a frozen dataclass is not necessary but it convenient. Being a
+dataclass you get the init, str, repr, etc for free. Being frozen, sort
+of immutable, makes them easier to reason around)
 
 In certain cases you might want to signal the parser
 that his class is not appropriate to parse the statement.
@@ -143,7 +145,10 @@ will produce the following output:
 
 
 The result is a collection of ``ParsedStatement`` or ``ParsingError`` (flanked by
-``BOS`` and ``EOS`` indicating beginning and ending of stream respectively).
+``BOF`` and ``EOS`` indicating beginning of file and ending of stream respectively
+Alternative, it can beginning with ``BOR`` with means beginning of resource and it
+is used when parsing a Python Resource provided with a package).
+
 Notice that there are two correctly parsed statements (``Assigment``), one
 error found (``InvalidIdentifier``) and one unknown (``UnknownStatement``).
 
@@ -351,7 +356,8 @@ non overlapping strings called **statements**. Parsing work as follows:
    available ParsedStatement or Block subclassed that returns
    a ``ParsedStatement`` or ``ParsingError``
 
-You can customize how to split each line into statements with two arguments:
+You can customize how to split each line into statements with two arguments
+provided to parse:
 
 - **strip_spaces** (`bool`): indicates that leading and trailing spaces must
   be removed before attempting to parse.
