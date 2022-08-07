@@ -24,8 +24,9 @@ except Exception:  # pragma: no cover
     __version__ = "unknown"
 
 
-from .flexparser import (  # BaseIterator,; SequenceIterator,
+from .flexparser import (
     Block,
+    DelimiterAction,
     DelimiterInclude,
     IncludeStatement,
     Multi,
@@ -42,8 +43,8 @@ from .flexparser import (  # BaseIterator,; SequenceIterator,
 
 __all__ = (
     "__version__",
-    "BaseIterator",
     "Block",
+    "DelimiterAction",
     "DelimiterInclude",
     "IncludeStatement",
     "Multi",
@@ -51,7 +52,6 @@ __all__ = (
     "Parser",
     "ParsingError",
     "RootBlock",
-    "SequenceIterator",
     "Single",
     "StatementIterator",
     "UnexpectedEOF",
