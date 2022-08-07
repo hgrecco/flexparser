@@ -195,6 +195,13 @@ def test_parse3(tmp_path, definition):
     body = tuple(mb.body)
     assert len(body) == 1
     mb = body[0]
+
+    assert mb.start_line == 1
+    assert mb.start_col == 0
+    assert mb.end_line == 4
+    assert mb.end_col == 4
+    assert mb.format_position == "1,0-4,4"
+
     assert mb.opening == Open().set_simple_position(FIRST_NUMBER + 0, 0, 6).set_raw(
         "@begin"
     )

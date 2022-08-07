@@ -443,7 +443,9 @@ class StatementIterator:
         self._spliter.set_delimiters(delimiters)
         if self._cache:
             value = self.peek()
-            self._spliter.set_position(value.start_line, value.start_col)
+            # Elements are 1 based indexing, while splitter is 0 based.
+            self._spliter.set_position(value.start_line - 1, value.start_col)
+            self._cache.clear()
 
     def _get_next_strip(self) -> Statement:
         part = ""
@@ -623,7 +625,7 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
 
     @property
     def format_position(self):
-        if self.start_line == -1:
+        if self.start_line is None:
             return "N/A"
         return "%d,%d-%d,%d" % self.get_position()
 
@@ -981,7 +983,7 @@ class Parser(ty.Generic[RBT, CT]):
 
     def parse_bytes(self, b: bytes, bos: BOS = None) -> ParsedSource[RBT, CT]:
         if bos is None:
-            bos = BOS(Hash.from_bytes(self._hasher, b))
+            bos = BOS(Hash.from_bytes(self._hasher, b)).set_simple_position(0, 0, 0)
 
         sic = self._statement_iterator_class(
             b.decode(self._encoding), self._delimiters, self._strip_spaces

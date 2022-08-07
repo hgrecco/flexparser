@@ -42,6 +42,11 @@ def test_consume(content):
     myparser = MyParser(None)
 
     pf = myparser.parse_bytes(content).parsed_source
+    assert pf.start_line == 0
+    assert pf.start_col == 0
+    assert pf.end_line == 3
+    assert pf.end_col == 0
+    assert pf.format_position == "0,0-3,0"
     assert isinstance(pf.opening, fp.BOS)
     assert isinstance(pf.closing, fp.EOS)
     body = tuple(pf.body)
