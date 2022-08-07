@@ -455,7 +455,7 @@ class StatementIterator:
 
             lo = len(part)
             part = part.rstrip()
-            end_col += lo - len(part)
+            end_col -= lo - len(part)
 
         return Statement.from_statement_iterator_element(
             (start_line + 1, start_col, end_line + 1, end_col, part)

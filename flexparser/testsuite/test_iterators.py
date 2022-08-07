@@ -171,7 +171,7 @@ def test_statement():
     assert el.start_line == 2
     assert el.start_col == 0
     assert el.end_line == 2
-    assert el.end_col == 8
+    assert el.end_col == 7
 
     assert next(bi).raw_strip == "## 456"
     assert bi.peek("blip") == "blip"
