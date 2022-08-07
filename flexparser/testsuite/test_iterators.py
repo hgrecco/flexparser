@@ -164,7 +164,9 @@ def test_statement():
     assert next(bi).raw_strip == "## 123"
 
     el = next(bi)
-    assert el.raw == "Caption "
+    # strip spaces now changes the element
+    # not the parser.
+    assert el.raw == "Caption"
     assert el.raw_strip == "Caption"
     assert el.start_line == 2
     assert el.start_col == 0
