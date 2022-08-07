@@ -15,6 +15,8 @@ from flexparser.testsuite.common import (
     Open,
 )
 
+FIRST_NUMBER = 1
+
 
 def _bosser(content: bytes):
     return fp.BOS(fp.Hash.from_bytes(hashlib.blake2b, content))
@@ -26,7 +28,7 @@ def _compare(arr1, arr2):
         if isinstance(a1, fp.BOS) and isinstance(a2, fp.BOS):
             assert a1.content_hash == a2.content_hash
         else:
-            assert a1 == a2
+            assert a1 == a2, str(a1) + " == " + str(a2)
 
 
 def test_locator():
@@ -83,8 +85,10 @@ def test_parse1(tmp_path, definition):
     body = tuple(mb.body)
     assert len(body) == 2
     assert body == (
-        Comment("# hola").set_line_col(0, 0),
-        EqualFloat("x", 1.0).set_line_col(1, 0),
+        Comment("# hola").set_simple_position(FIRST_NUMBER + 0, 0, 6).set_raw("# hola"),
+        EqualFloat("x", 1.0)
+        .set_simple_position(FIRST_NUMBER + 1, 0, 5)
+        .set_raw("x=1.0"),
     )
     assert tuple(mb) == (mb.opening, *body, mb.closing)
     assert not mb.has_errors
@@ -92,10 +96,14 @@ def test_parse1(tmp_path, definition):
     _compare(
         tuple(pp.iter_statements()),
         (
-            _bosser(content).set_line_col(0, 0),
-            Comment("# hola").set_line_col(0, 0),
-            EqualFloat("x", 1.0).set_line_col(1, 0),
-            fp.EOS().set_line_col(-1, -1),
+            _bosser(content).set_simple_position(FIRST_NUMBER + 0, 0, 0),
+            Comment("# hola")
+            .set_simple_position(FIRST_NUMBER + 0, 0, 6)
+            .set_raw("# hola"),
+            EqualFloat("x", 1.0)
+            .set_simple_position(FIRST_NUMBER + 1, 0, 5)
+            .set_raw("x=1.0"),
+            fp.EOS().set_simple_position(FIRST_NUMBER + 2, 0, 0),
         ),
     )
 
@@ -128,8 +136,12 @@ def test_parse2(tmp_path, definition):
     body = tuple(mb.body)
     assert len(body) == 2
     assert body == (
-        EqualFloat("y", 2.0).set_line_col(0, 0),
-        EqualFloat("x", 1.0).set_line_col(1, 0),
+        EqualFloat("y", 2.0)
+        .set_simple_position(FIRST_NUMBER + 0, 0, 7)
+        .set_raw("y = 2.0"),
+        EqualFloat("x", 1.0)
+        .set_simple_position(FIRST_NUMBER + 1, 0, 5)
+        .set_raw("x=1.0"),
     )
     assert tuple(mb) == (mb.opening, *body, mb.closing)
     assert not mb.has_errors
@@ -137,10 +149,14 @@ def test_parse2(tmp_path, definition):
     _compare(
         tuple(pp.iter_statements()),
         (
-            _bosser(content).set_line_col(0, 0),
-            EqualFloat("y", 2.0).set_line_col(0, 0),
-            EqualFloat("x", 1.0).set_line_col(1, 0),
-            fp.EOS().set_line_col(-1, -1),
+            _bosser(content).set_simple_position(FIRST_NUMBER + 0, 0, 0),
+            EqualFloat("y", 2.0)
+            .set_simple_position(FIRST_NUMBER + 0, 0, 7)
+            .set_raw("y = 2.0"),
+            EqualFloat("x", 1.0)
+            .set_simple_position(FIRST_NUMBER + 1, 0, 5)
+            .set_raw("x=1.0"),
+            fp.EOS().set_simple_position(FIRST_NUMBER + 2, 0, 0),
         ),
     )
 
@@ -179,23 +195,35 @@ def test_parse3(tmp_path, definition):
     body = tuple(mb.body)
     assert len(body) == 1
     mb = body[0]
-    assert mb.opening == Open().set_line_col(0, 0)
-    assert tuple(mb.body) == (
-        EqualFloat("y", 2.0).set_line_col(1, 0),
-        EqualFloat("x", 1.0).set_line_col(2, 0),
+    assert mb.opening == Open().set_simple_position(FIRST_NUMBER + 0, 0, 6).set_raw(
+        "@begin"
     )
-    assert mb.closing == Close().set_line_col(3, 0)
+    assert tuple(mb.body) == (
+        EqualFloat("y", 2.0)
+        .set_simple_position(FIRST_NUMBER + 1, 0, 7)
+        .set_raw("y = 2.0"),
+        EqualFloat("x", 1.0)
+        .set_simple_position(FIRST_NUMBER + 2, 0, 5)
+        .set_raw("x=1.0"),
+    )
+    assert mb.closing == Close().set_simple_position(FIRST_NUMBER + 3, 0, 4).set_raw(
+        "@end"
+    )
     assert not mb.has_errors
 
     _compare(
         tuple(pp.iter_statements()),
         (
-            _bosser(content).set_line_col(0, 0),
-            Open().set_line_col(0, 0),
-            EqualFloat("y", 2.0).set_line_col(1, 0),
-            EqualFloat("x", 1.0).set_line_col(2, 0),
-            Close().set_line_col(3, 0),
-            fp.EOS().set_line_col(-1, -1),
+            _bosser(content).set_simple_position(FIRST_NUMBER + 0, 0, 0),
+            Open().set_simple_position(FIRST_NUMBER + 0, 0, 6).set_raw("@begin"),
+            EqualFloat("y", 2.0)
+            .set_simple_position(FIRST_NUMBER + 1, 0, 7)
+            .set_raw("y = 2.0"),
+            EqualFloat("x", 1.0)
+            .set_simple_position(FIRST_NUMBER + 2, 0, 5)
+            .set_raw("x=1.0"),
+            Close().set_simple_position(FIRST_NUMBER + 3, 0, 4).set_raw("@end"),
+            fp.EOS().set_simple_position(FIRST_NUMBER + 4, 0, 0),
         ),
     )
 
@@ -233,13 +261,20 @@ def test_include_file(tmp_path):
     _compare(
         tuple(pp.iter_statements()),
         (
-            _bosser(content1).set_line_col(0, 0),
-            _bosser(content2).set_line_col(0, 0),
-            Comment("# hola").set_line_col(0, 0),
-            EqualFloat("x", 1.0).set_line_col(1, 0),
-            fp.EOS().set_line_col(-1, -1),
-            Comment("# chau").set_line_col(1, 0),
-            fp.EOS().set_line_col(-1, -1),
+            _bosser(content1).set_simple_position(FIRST_NUMBER + 0, 0, 0),
+            # Include
+            _bosser(content2).set_simple_position(FIRST_NUMBER + 0, 0, 6),
+            Comment("# hola")
+            .set_simple_position(FIRST_NUMBER + 0, 0, 6)
+            .set_raw("# hola"),
+            EqualFloat("x", 1.0)
+            .set_simple_position(FIRST_NUMBER + 1, 0, 5)
+            .set_raw("x=1.0"),
+            fp.EOS().set_simple_position(FIRST_NUMBER + 2, 0, 0),
+            Comment("# chau")
+            .set_simple_position(FIRST_NUMBER + 1, 0, 6)
+            .set_raw("# chau"),
+            fp.EOS().set_simple_position(FIRST_NUMBER + 2, 0, 0),
         ),
     )
 
@@ -270,12 +305,19 @@ def test_resources(tmp_path):
     _compare(
         tuple(pp.iter_statements()),
         (
-            _bosser(content1).set_line_col(0, 0),
-            _bosser(content2).set_line_col(0, 0),
-            Comment("# hola").set_line_col(0, 0),
-            EqualFloat("x", 1.0).set_line_col(1, 0),
-            fp.EOS().set_line_col(-1, -1),
-            Comment("# chau").set_line_col(1, 0),
-            fp.EOS().set_line_col(-1, -1),
+            _bosser(content1).set_simple_position(FIRST_NUMBER + 0, 0, 0),
+            # include
+            _bosser(content2).set_simple_position(FIRST_NUMBER + 0, 0, 0),
+            Comment("# hola")
+            .set_simple_position(FIRST_NUMBER + 0, 0, 6)
+            .set_raw("# hola"),
+            EqualFloat("x", 1.0)
+            .set_simple_position(FIRST_NUMBER + 1, 0, 5)
+            .set_raw("x=1.0"),
+            fp.EOS().set_simple_position(FIRST_NUMBER + 2, 0, 0),
+            Comment("# chau")
+            .set_simple_position(FIRST_NUMBER + 1, 0, 6)
+            .set_raw("# chau"),
+            fp.EOS().set_simple_position(FIRST_NUMBER + 2, 0, 0),
         ),
     )

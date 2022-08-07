@@ -9,6 +9,8 @@ from flexparser.testsuite.common import (
     MyParserWithBlock,
 )
 
+FIRST_NUMBER = 1
+
 
 @pytest.mark.parametrize(
     "content", (b"# hola\nx<>1.0", b"# hola\r\nx<>1.0", b"# hola\rx<>1.0")
@@ -22,14 +24,15 @@ def test_consume_err(content):
     body = tuple(pf.body)
     assert len(body) == 2
     assert body == (
-        Comment("# hola").set_line_col(0, 0),
-        fp.UnknownStatement.from_line_col_statement(1, 0, "x<>1.0"),
+        Comment("# hola").set_simple_position(FIRST_NUMBER + 0, 0, 6).set_raw("# hola"),
+        fp.UnknownStatement()
+        .set_simple_position(FIRST_NUMBER + 1, 0, 6)
+        .set_raw("x<>1.0"),
     )
     assert tuple(pf) == (pf.opening, *body, pf.closing)
     assert pf.has_errors
 
-    assert str(body[-1]) == "Could not parse 'x<>1.0' (line: 1, col: 0)"
-    assert str(body[-1]) == "Could not parse 'x<>1.0' (line: 1, col: 0)"
+    assert str(body[-1]) == "Could not parse 'x<>1.0' (2,0-2,6)"
 
 
 @pytest.mark.parametrize(
@@ -44,8 +47,10 @@ def test_consume(content):
     body = tuple(pf.body)
     assert len(body) == 2
     assert body == (
-        Comment("# hola").set_line_col(0, 0),
-        EqualFloat("x", 1.0).set_line_col(1, 0),
+        Comment("# hola").set_simple_position(FIRST_NUMBER + 0, 0, 6).set_raw("# hola"),
+        EqualFloat("x", 1.0)
+        .set_simple_position(FIRST_NUMBER + 1, 0, 5)
+        .set_raw("x=1.0"),
     )
     assert tuple(pf) == (pf.opening, *body, pf.closing)
     assert not pf.has_errors
@@ -79,8 +84,10 @@ def test_parse(tmp_path, use_string):
     body = tuple(mb.body)
     assert len(body) == 2
     assert body == (
-        Comment("# hola").set_line_col(0, 0),
-        EqualFloat("x", 1.0).set_line_col(1, 0),
+        Comment("# hola").set_simple_position(FIRST_NUMBER + 0, 0, 6).set_raw("# hola"),
+        EqualFloat("x", 1.0)
+        .set_simple_position(FIRST_NUMBER + 1, 0, 5)
+        .set_raw("x=1.0"),
     )
     assert tuple(mb) == (mb.opening, *body, mb.closing)
     assert not mb.has_errors
@@ -98,7 +105,9 @@ def test_unfinished_block(tmp_path):
     assert psf.config is None
     assert psf.parsed_source.opening.mtime == tmp_file.stat().st_mtime
     assert psf.parsed_source.opening.path == tmp_file
-    assert tuple(psf.errors()) == (fp.UnexpectedEOF().set_line_col(-1, -1),)
+    assert tuple(psf.errors()) == (
+        fp.UnexpectedEOF().set_simple_position(FIRST_NUMBER + 3, 0, 0),
+    )
     assert psf.location == tmp_file
 
     mb = psf.parsed_source
@@ -107,10 +116,14 @@ def test_unfinished_block(tmp_path):
     body = tuple(mb.body)
     assert len(body) == 1
     assert isinstance(body[0], MyBlock)
-    assert body[0].closing == fp.UnexpectedEOF().set_line_col(-1, -1)
+    assert body[0].closing == fp.UnexpectedEOF().set_simple_position(
+        FIRST_NUMBER + 3, 0, 0
+    )
     assert body[0].body == (
-        Comment("# hola").set_line_col(1, 0),
-        EqualFloat("x", 1.0).set_line_col(2, 0),
+        Comment("# hola").set_simple_position(FIRST_NUMBER + 1, 0, 6).set_raw("# hola"),
+        EqualFloat("x", 1.0)
+        .set_simple_position(FIRST_NUMBER + 2, 0, 5)
+        .set_raw("x=1.0"),
     )
 
 
@@ -141,8 +154,10 @@ def test_parse_resource(use_resource):
     body = tuple(mb.body)
     assert len(body) == 2
     assert body == (
-        Comment("# hola").set_line_col(0, 0),
-        EqualFloat("x", 1.0).set_line_col(1, 0),
+        Comment("# hola").set_simple_position(FIRST_NUMBER + 0, 0, 6).set_raw("# hola"),
+        EqualFloat("x", 1.0)
+        .set_simple_position(FIRST_NUMBER + 1, 0, 5)
+        .set_raw("x=1.0"),
     )
     assert tuple(mb) == (mb.opening, *body, mb.closing)
     assert not mb.has_errors

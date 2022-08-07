@@ -2,112 +2,178 @@ import pytest
 
 import flexparser.flexparser as fp
 
-_TEST = [
-    "testing",
-    "# this is a comment",
-    "  # this is also a comment",
-    "123",
-    "456 # this is a comment",
-]
+
+@pytest.mark.parametrize(
+    "delimiters,content,expected",
+    [
+        # ### 0
+        (
+            {},
+            "Testing # 123",
+            ((0, 0, 0, 13, "Testing # 123"),),
+        ),
+        # ### 1
+        (
+            {"#": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.STOP_PARSING)},
+            "Testing # 123",
+            ((0, 0, 0, 8, "Testing "),),
+        ),
+        # ### 2
+        (
+            {"#": (fp.DelimiterInclude.SPLIT_AFTER, fp.DelimiterAction.STOP_PARSING)},
+            "Testing # 123",
+            ((0, 0, 0, 9, "Testing #"),),
+        ),
+        # ### 3
+        (
+            {"#": (fp.DelimiterInclude.SPLIT_BEFORE, fp.DelimiterAction.STOP_PARSING)},
+            "Testing # 123",
+            ((0, 0, 0, 8, "Testing "),),
+        ),
+    ],
+)
+def test_split_single_line(delimiters, content, expected):
+
+    out = tuple(fp.Spliter(content, delimiters))
+    assert out == expected
 
 
-def test_base_iterator():
-    bi = fp.BaseIterator(iter(("spam", "ham")))
-    assert bi.peek() == "spam"
-    assert next(bi) == "spam"
-    assert bi.peek() == "ham"
-    assert next(bi) == "ham"
+@pytest.mark.parametrize(
+    "delimiters,content,expected",
+    [
+        # ### 0
+        (
+            {},
+            "Testing # 123\nCaption # 456",
+            ((0, 0, 1, 13, "Testing # 123\nCaption # 456"),),
+        ),
+        # ### 1
+        (
+            {"#": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.STOP_PARSING)},
+            "Testing # 123\nCaption # 456",
+            ((0, 0, 0, 8, "Testing "),),
+        ),
+        # ### 2
+        (
+            {"#": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CAPTURE_NEXT_TIL_EOL)},
+            "Testing # 123\nCaption # 456",
+            (
+                (0, 0, 0, 8, "Testing "),
+                (0, 9, 1, 8, " 123\nCaption "),
+                (1, 9, 1, 13, " 456"),
+            ),
+        ),
+        # ### 3
+        (
+            {
+                "#": (
+                    fp.DelimiterInclude.SPLIT_BEFORE,
+                    fp.DelimiterAction.CAPTURE_NEXT_TIL_EOL,
+                ),
+                "\n": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+                "\r": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+                "\r\n": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+            },
+            "Testing # 123\nCaption # 456",
+            (
+                (0, 0, 0, 8, "Testing "),
+                (0, 8, 0, 13, "# 123"),
+                (1, 0, 1, 8, "Caption "),
+                (1, 8, 1, 13, "# 456"),
+            ),
+        ),
+        # ### 4
+        (
+            {
+                "#": (
+                    fp.DelimiterInclude.SPLIT_BEFORE,
+                    fp.DelimiterAction.CAPTURE_NEXT_TIL_EOL,
+                ),
+                "\n": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+                "\r": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+                "\r\n": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+            },
+            "Testing ## 123\nCaption ## 456",
+            (
+                (0, 0, 0, 8, "Testing "),
+                (0, 8, 0, 14, "## 123"),
+                (1, 0, 1, 8, "Caption "),
+                (1, 8, 1, 14, "## 456"),
+            ),
+        ),
+        # ### 5
+        (
+            {
+                "#": (fp.DelimiterInclude.SPLIT_BEFORE, fp.DelimiterAction.CONTINUE),
+                "\n": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+                "\r": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+                "\r\n": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+            },
+            "Testing ## 123\nCaption ## 456",
+            (
+                (0, 0, 0, 8, "Testing "),
+                (0, 8, 0, 9, "#"),
+                (0, 9, 0, 14, "# 123"),
+                (1, 0, 1, 8, "Caption "),
+                (1, 8, 1, 9, "#"),
+                (1, 9, 1, 14, "# 456"),
+            ),
+        ),
+        # ### 6
+        (
+            {
+                "#": (
+                    fp.DelimiterInclude.SPLIT_BEFORE,
+                    fp.DelimiterAction.CAPTURE_NEXT_TIL_EOL,
+                ),
+                "\n": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+                "\r": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+                "\r\n": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+            },
+            "Testing ## 123\nCaption ## 456",
+            (
+                (0, 0, 0, 8, "Testing "),
+                (0, 8, 0, 14, "## 123"),
+                (1, 0, 1, 8, "Caption "),
+                (1, 8, 1, 14, "## 456"),
+            ),
+        ),
+    ],
+)
+def test_split_multi_line(delimiters, content, expected):
+
+    out = tuple(fp.Spliter(content, delimiters))
+    assert out == expected
+
+
+def test_statement():
+    dlm = {
+        "#": (
+            fp.DelimiterInclude.SPLIT_BEFORE,
+            fp.DelimiterAction.CAPTURE_NEXT_TIL_EOL,
+        ),
+        "\n": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+        "\r": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+        "\r\n": (fp.DelimiterInclude.SPLIT, fp.DelimiterAction.CONTINUE),
+    }
+    content = "Testing ## 123\nCaption ## 456"
+    bi = fp.StatementIterator(content, dlm)
+    assert bi.peek().raw_strip == "Testing"
+    assert next(bi).raw_strip == "Testing"
+    assert bi.peek().raw_strip == "## 123"
+    assert next(bi).raw_strip == "## 123"
+
+    el = next(bi)
+    assert el.raw == "Caption "
+    assert el.raw_strip == "Caption"
+    assert el.start_line == 2
+    assert el.start_col == 0
+    assert el.end_line == 2
+    assert el.end_col == 8
+
+    assert next(bi).raw_strip == "## 456"
     assert bi.peek("blip") == "blip"
     with pytest.raises(StopIteration):
         bi.peek()
     with pytest.raises(StopIteration):
         next(bi)
-
-
-def test_statement_iterator_default():
-    si = fp.StatementIterator.from_line("spam")
-    assert si.peek() == (0, "spam")
-    assert tuple(si) == ((0, "spam"),)
-
-    with pytest.raises(Exception):
-        fp.StatementIterator.from_line("spam").delimiter_pattern()
-
-
-def test_statement_iterator_subclass():
-    class S1a(fp.StatementIterator):
-        _strip_spaces = False
-        _delimiters = ("#", "!")
-
-    S1b = fp.StatementIterator.subclass_with(strip_spaces=False, delimiters=("#", "!"))
-    assert S1a is not S1b
-    assert S1a._strip_spaces == S1b._strip_spaces
-    assert S1b._delimiters == S1b._delimiters
-
-
-def test_statement_iterator_strip_spaces():
-    NewStatementIterator = fp.StatementIterator.subclass_with(strip_spaces=True)
-
-    assert tuple(NewStatementIterator.from_line("spam ")) == ((0, "spam"),)
-    assert tuple(NewStatementIterator.from_line(" spam")) == ((0, "spam"),)
-    assert tuple(NewStatementIterator.from_line(" spam ")) == ((0, "spam"),)
-
-    NewStatementIterator = fp.StatementIterator.subclass_with(strip_spaces=False)
-
-    assert tuple(NewStatementIterator.from_line("spam ")) == ((0, "spam "),)
-    assert tuple(NewStatementIterator.from_line(" spam")) == ((0, " spam"),)
-    assert tuple(NewStatementIterator.from_line(" spam ")) == ((0, " spam "),)
-
-    dlm = {
-        "#": (fp.DelimiterMode.SKIP, False),
-    }
-    NewStatementIterator = fp.StatementIterator.subclass_with(
-        strip_spaces=False, delimiters=dlm
-    )
-
-    assert tuple(NewStatementIterator.from_line("spam# ham")) == (
-        (0, "spam"),
-        (5, " ham"),
-    )
-    assert tuple(NewStatementIterator.from_line("spam #ham")) == (
-        (0, "spam "),
-        (6, "ham"),
-    )
-
-
-def test_statement_iterator_single_splitter():
-    dlm = {
-        "#": (fp.DelimiterMode.SKIP, False),
-    }
-    NewStatementIterator = fp.StatementIterator.subclass_with(delimiters=dlm)
-
-    assert tuple(NewStatementIterator.from_line("spam")) == ((0, "spam"),)
-    assert tuple(NewStatementIterator.from_line("spam#ham")) == (
-        (0, "spam"),
-        (5, "ham"),
-    )
-
-
-def test_statement_iterator_multiple_splitter():
-    dlm = {
-        "#": (fp.DelimiterMode.SKIP, False),
-        "!": (fp.DelimiterMode.SKIP, False),
-    }
-    NewStatementIterator = fp.StatementIterator.subclass_with(delimiters=dlm)
-
-    assert tuple(NewStatementIterator.from_line("spam")) == ((0, "spam"),)
-    assert tuple(NewStatementIterator.from_line("spam#ham!cheese")) == (
-        (0, "spam"),
-        (5, "ham"),
-        (9, "cheese"),
-    )
-    assert tuple(NewStatementIterator.from_line("spam!ham#cheese")) == (
-        (0, "spam"),
-        (5, "ham"),
-        (9, "cheese"),
-    )
-
-
-def test_sequence_iterator():
-    si = fp.SequenceIterator.from_lines("spam \n ham".split("\n"))
-    assert si.peek() == (0, 0, "spam")
-    assert tuple(si) == ((0, 0, "spam"), (1, 0, "ham"))

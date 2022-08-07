@@ -47,7 +47,16 @@ cfg = common.Config()
 p = pathlib.Path("files/default_en.txt")
 
 parsed = fp.parse(
-    p, EntryBlock, cfg, delimiters={"#": (fp.DelimiterMode.WITH_NEXT, True)}
+    p,
+    EntryBlock,
+    cfg,
+    delimiters={
+        "#": (
+            fp.DelimiterInclude.SPLIT_BEFORE,
+            fp.DelimiterAction.CAPTURE_NEXT_TIL_EOL,
+        ),
+        **fp.SPLIT_EOL,
+    },
 )
 
 
@@ -62,6 +71,12 @@ def pprint(objs, indent=1):
     print(TT * (indent - 1), objs.closing)
 
 
+print("Keys")
+print("----")
+for k in parsed.keys():
+    print(k)
+
+print("\n\n----\n\n")
 for x in parsed.iter_statements():
     print(x)
 

@@ -28,11 +28,11 @@ import logging
 import pathlib
 import re
 import typing as ty
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import cached_property
 from importlib import resources
-from typing import Dict, Optional, Tuple, Type
+from typing import Optional, Tuple, Type
 
 _LOGGER = logging.getLogger("flexparser")
 
@@ -45,44 +45,73 @@ _SENTINEL = object()
 
 
 @dataclass(frozen=True)
-class Element:
-    """Base class for elements within a source file to be parsed."""
+class Statement:
+    """Base class for parsed elements within a source file."""
 
-    lineno: int = dataclasses.field(init=False, default=-1)
-    colno: int = dataclasses.field(init=False, default=-1)
+    start_line: int = dataclasses.field(init=False, default=None)
+    start_col: int = dataclasses.field(init=False, default=None)
+
+    end_line: int = dataclasses.field(init=False, default=None)
+    end_col: int = dataclasses.field(init=False, default=None)
+
+    raw: str = dataclasses.field(init=False, default=None)
+
+    @classmethod
+    def from_statement(cls, statement: Statement):
+        out = cls()
+        out.set_position(*statement.get_position())
+        out.set_raw(statement.raw)
+        return out
+
+    @classmethod
+    def from_statement_iterator_element(cls, values: ty.Tuple[int, int, int, int, str]):
+        out = cls()
+        out.set_position(*values[:-1])
+        out.set_raw(values[-1])
+        return out
 
     @property
-    def format_line_col(self):
-        return f"(line: {self.lineno}, col: {self.colno})"
+    def format_position(self):
+        if self.start_line is None:
+            return "N/A"
+        return "%d,%d-%d,%d" % self.get_position()
 
-    def set_line_col(self, lineno, colno):
-        object.__setattr__(self, "lineno", lineno)
-        object.__setattr__(self, "colno", colno)
+    @property
+    def raw_strip(self):
+        return self.raw.strip()
+
+    def get_position(self):
+        return self.start_line, self.start_col, self.end_line, self.end_col
+
+    def set_position(self, start_line, start_col, end_line, end_col):
+        object.__setattr__(self, "start_line", start_line)
+        object.__setattr__(self, "start_col", start_col)
+        object.__setattr__(self, "end_line", end_line)
+        object.__setattr__(self, "end_col", end_col)
         return self
+
+    def set_raw(self, raw):
+        object.__setattr__(self, "raw", raw)
+        return self
+
+    def set_simple_position(self, line, col, width):
+        return self.set_position(line, col, line, col + width)
 
 
 @dataclass(frozen=True)
-class ParsingError(Element, Exception):
-    """Base class for all exceptions in this package."""
+class ParsingError(Statement, Exception):
+    """Base class for all parsing exceptions in this package."""
 
     def __str__(self):
-        return Element.__str__(self)
+        return Statement.__str__(self)
 
 
 @dataclass(frozen=True)
 class UnknownStatement(ParsingError):
     """A string statement could not bee parsed."""
 
-    statement: str
-
     def __str__(self):
-        return f"Could not parse '{self.statement}' (line: {self.lineno}, col: {self.colno})"
-
-    @classmethod
-    def from_line_col_statement(cls, lineno, colno, statement):
-        obj = cls(statement)
-        obj.set_line_col(lineno, colno)
-        return obj
+        return f"Could not parse '{self.raw}' ({self.format_position})"
 
 
 @dataclass(frozen=True)
@@ -157,114 +186,294 @@ class classproperty:  # noqa N801
         return self.fget(owner_cls)
 
 
-def is_empty_pattern(pattern: str | re.Pattern) -> bool:
-    """True if the regex pattern string is empty
-    or the compiled version comes from an empty string.
-    """
-    if isinstance(pattern, str):
-        return not bool(pattern)
-    return not bool(getattr(pattern, "pattern", ""))
-
-
-def isplit(
-    pattern: str | re.Pattern, line: str
-) -> Iterator[tuple[int, str, Optional[str]]]:
-    """Yield position, strings between matches and match group (delimiter)
-    in a regex pattern applied to a line.
-
-    Returns None as delimiter for last element.
-    """
-    col = 0
-    if not is_empty_pattern(pattern):
-        for m in re.finditer(pattern, line):
-            part = line[col : m.start()]
-            yield col, part, m.group(0)
-            col = m.end()
-
-    yield col, line[col:], None
-
-
-class DelimiterMode(enum.Enum):
+class DelimiterInclude(enum.IntEnum):
     """Specifies how to deal with delimiters while parsing."""
 
-    #: Skip delimiter in output string
-    SKIP = 0
+    #: Split at delimiter, not including in any string
+    SPLIT = enum.auto()
 
-    #: Keep delimiter with previous string.
-    WITH_PREVIOUS = 1
+    #: Split after, keeping the delimiter with previous string.
+    SPLIT_AFTER = enum.auto()
 
-    #: Keep delimiter with next string.
-    WITH_NEXT = 2
+    #: Split before, keeping the delimiter with next string.
+    SPLIT_BEFORE = enum.auto()
+
+    #: Do not split at delimiter.
+    DO_NOT_SPLIT = enum.auto()
+
+
+class DelimiterAction(enum.IntEnum):
+    """Specifies how to deal with delimiters while parsing."""
+
+    #: Continue parsing normally.
+    CONTINUE = enum.auto()
+
+    #: Capture everything til end of line as a whole.
+    CAPTURE_NEXT_TIL_EOL = enum.auto()
+
+    #: Stop parsing line and move to next.
+    STOP_PARSING_LINE = enum.auto()
+
+    #: Stop parsing content.
+    STOP_PARSING = enum.auto()
+
+
+DO_NOT_SPLIT_EOL = {
+    "\r\n": (DelimiterInclude.DO_NOT_SPLIT, DelimiterAction.CONTINUE),
+    "\n": (DelimiterInclude.DO_NOT_SPLIT, DelimiterAction.CONTINUE),
+    "\r": (DelimiterInclude.DO_NOT_SPLIT, DelimiterAction.CONTINUE),
+}
+
+SPLIT_EOL = {
+    "\r\n": (DelimiterInclude.SPLIT, DelimiterAction.CONTINUE),
+    "\n": (DelimiterInclude.SPLIT, DelimiterAction.CONTINUE),
+    "\r": (DelimiterInclude.SPLIT, DelimiterAction.CONTINUE),
+}
+
+_EOLs_set = set(DO_NOT_SPLIT_EOL.keys())
 
 
 @functools.lru_cache
-def _build_delimiter_pattern(pattern_tuple: Tuple[str, ...]) -> re.Pattern:
+def _build_delimiter_pattern(delimiters: ty.Tuple[str, ...]) -> re.Pattern:
     """Compile a tuple of delimiters into a regex expression with a capture group
     around the delimiter.
     """
-    return re.compile("|".join(f"({re.escape(el)})" for el in pattern_tuple))
-
-
-def isplit_mode(
-    delimiters: Dict[str, Tuple[DelimiterMode, bool]], line: str
-) -> Iterator[tuple[int, str]]:
-    """Yield position and strings between delimiters.
-
-    The delimiters are specified with the keys of the delimiters dict.
-    The dict files can be used to further customize the iterator. Each
-    consist of a tuple of two elements:
-      1. A value of the DelimiterMode to indicate what to do with the
-         delimiter string: skip it, attach keep it with previous or next string
-      2. A boolean indicating if parsing should stop after fiSBT
-         encountering this delimiter.
-
-    Empty strings are not yielded.
-    """
-    pattern = _build_delimiter_pattern(tuple(delimiters.keys()))
-    dragged = ""
-    break_next = False
-    for col, part, dlm in isplit(pattern, line):
-        if break_next:
-            yield col - len(dragged), dragged + line[col:]
-            break
-
-        next_drag = ""
-        if dlm is None:
-            delimiter_mode, break_next = DelimiterMode.SKIP, False
-        else:
-            delimiter_mode, break_next = delimiters[dlm]
-
-            if delimiter_mode == DelimiterMode.WITH_PREVIOUS:
-                part = part + dlm
-            elif delimiter_mode == DelimiterMode.WITH_NEXT:
-                next_drag = dlm
-
-        if part:
-            yield col - len(dragged), dragged + part
-
-        dragged = next_drag
+    return re.compile("|".join(f"({re.escape(el)})" for el in delimiters))
 
 
 ############
 # Iterators
 ############
 
-T = ty.TypeVar("T")
+DelimiterDictT = ty.Dict[str, ty.Tuple[DelimiterInclude, DelimiterAction]]
 
 
-class BaseIterator(ty.Generic[T], Iterator[T]):
-    """Base class for iterator that provides the ability to peek."""
+class Spliter:
+    """Content iterator splitting according to given delimiters.
 
-    _cache: ty.Deque[T]
+    The pattern can be changed dynamically sending a new pattern to the generator,
+    see DelimiterInclude and DelimiterAction for more information.
 
-    def __init__(self, iterator: Iterator[T]):
-        self._it = iterator
-        self._cache = collections.deque()
+    The current scanning position can be changed at any time.
+
+    Parameters
+    ----------
+    content : str
+    delimiters : ty.Dict[str, ty.Tuple[DelimiterInclude, DelimiterAction]]
+
+    Yields
+    ------
+    start_line : int
+        line number of the start of the content (zero-based numbering).
+    start_col : int
+        column number of the start of the content (zero-based numbering).
+    end_line : int
+        line number of the end of the content (zero-based numbering).
+    end_col : int
+        column number of the end of the content (zero-based numbering).
+    part : str
+        part of the text between delimiters.
+    """
+
+    _pattern: ty.Optional[re.Pattern]
+    _delimiters: DelimiterDictT
+
+    __stop_searching_in_line = False
+
+    __pending = ""
+    __first_line_col = None
+
+    __lines = ()
+    __lineno = 0
+    __colno = 0
+
+    def __init__(self, content: str, delimiters: DelimiterDictT):
+        self.set_delimiters(delimiters)
+        self.__lines = content.splitlines(keepends=True)
+
+    def set_position(self, lineno: int, colno: int):
+        self.__lineno, self.__colno = lineno, colno
+
+    def set_delimiters(self, delimiters: DelimiterDictT):
+        for k, v in delimiters.items():
+            if v == (DelimiterInclude.DO_NOT_SPLIT, DelimiterAction.STOP_PARSING):
+                raise ValueError(
+                    f"The delimiter action for {k} is not a valid combination ({v})"
+                )
+        # Build a pattern but removing eols
+        _pat_dlm = tuple(set(delimiters.keys()) - _EOLs_set)
+        if _pat_dlm:
+            self._pattern = _build_delimiter_pattern(_pat_dlm)
+        else:
+            self._pattern = None
+        # We add the end of line as delimiters if not present.
+        self._delimiters = {**DO_NOT_SPLIT_EOL, **delimiters}
 
     def __iter__(self):
         return self
 
-    def peek(self, default=_SENTINEL) -> T:
+    def __next__(self):
+        if self.__lineno >= len(self.__lines):
+            raise StopIteration
+
+        while True:
+            if self.__stop_searching_in_line:
+                # There must be part of a line pending to parse
+                # due to stop
+                line = self.__lines[self.__lineno]
+                mo = None
+                self.__stop_searching_in_line = False
+            else:
+                # We get the current line and the find the first delimiter.
+                line = self.__lines[self.__lineno]
+                if self._pattern is None:
+                    mo = None
+                else:
+                    mo = self._pattern.search(line, self.__colno)
+
+            if mo is None:
+                # No delimiter was found,
+                # which should happen at end of the content or end of line
+                for k in DO_NOT_SPLIT_EOL.keys():
+                    if line.endswith(k):
+                        dlm = line[-len(k) :]
+                        end_col, next_col = len(line) - len(k), 0
+                        break
+                else:
+                    # No EOL found, this is end of content
+                    dlm = None
+                    end_col, next_col = len(line), 0
+
+                next_line = self.__lineno + 1
+
+            else:
+                next_line = self.__lineno
+                end_col, next_col = mo.span()
+                dlm = mo.group()
+
+            part = line[self.__colno : end_col]
+
+            include, action = self._delimiters.get(
+                dlm, (DelimiterInclude.SPLIT, DelimiterAction.STOP_PARSING)
+            )
+
+            if include == DelimiterInclude.SPLIT:
+                next_pending = ""
+            elif include == DelimiterInclude.SPLIT_AFTER:
+                end_col += len(dlm)
+                part = part + dlm
+                next_pending = ""
+            elif include == DelimiterInclude.SPLIT_BEFORE:
+                next_pending = dlm
+            elif include == DelimiterInclude.DO_NOT_SPLIT:
+                self.__pending += line[self.__colno : end_col] + dlm
+                next_pending = ""
+            else:
+                raise ValueError(f"Unknown action {include}.")
+
+            if action == DelimiterAction.STOP_PARSING:
+                # this will raise a StopIteration in the next call.
+                next_line = len(self.__lines)
+            elif action == DelimiterAction.STOP_PARSING_LINE:
+                next_line = self.__lineno + 1
+                next_col = 0
+
+            start_line = self.__lineno
+            start_col = self.__colno
+            end_line = self.__lineno
+
+            self.__lineno = next_line
+            self.__colno = next_col
+
+            if action == DelimiterAction.CAPTURE_NEXT_TIL_EOL:
+                self.__stop_searching_in_line = True
+
+            if include == DelimiterInclude.DO_NOT_SPLIT:
+                self.__first_line_col = start_line, start_col
+            else:
+                if self.__first_line_col is None:
+                    out = (
+                        start_line,
+                        start_col - len(self.__pending),
+                        end_line,
+                        end_col,
+                        self.__pending + part,
+                    )
+                else:
+                    out = (
+                        *self.__first_line_col,
+                        end_line,
+                        end_col,
+                        self.__pending + part,
+                    )
+                    self.__first_line_col = None
+                self.__pending = next_pending
+                return out
+
+
+class StatementIterator:
+    """Content peekable iterator splitting according to given delimiters.
+
+    The pattern can be changed dynamically sending a new pattern to the generator,
+    see DelimiterInclude and DelimiterAction for more information.
+
+    Parameters
+    ----------
+    content : str
+    delimiters : dict[str, ty.Tuple[DelimiterInclude, DelimiterAction]]
+
+    Yields
+    ------
+    Statement
+    """
+
+    _cache: ty.Deque[Statement]
+
+    def __init__(
+        self, content: str, delimiters: DelimiterDictT, strip_spaces: bool = True
+    ):
+        self._cache = collections.deque()
+        self._spliter = Spliter(content, delimiters)
+        self._strip_spaces = strip_spaces
+
+    def __iter__(self):
+        return self
+
+    def set_delimiters(self, delimiters: DelimiterDictT):
+        self._spliter.set_delimiters(delimiters)
+        if self._cache:
+            value = self.peek()
+            self._spliter.set_position(value.start_line, value.start_col)
+
+    def _get_next_strip(self) -> Statement:
+        part = ""
+        while not part:
+            start_line, start_col, end_line, end_col, part = next(self._spliter)
+            lo = len(part)
+            part = part.lstrip()
+            start_col += lo - len(part)
+
+            lo = len(part)
+            part = part.rstrip()
+            end_col += lo - len(part)
+
+        return Statement.from_statement_iterator_element(
+            (start_line + 1, start_col, end_line + 1, end_col, part)
+        )
+
+    def _get_next(self) -> Statement:
+        if self._strip_spaces:
+            return self._get_next_strip()
+
+        part = ""
+        while not part:
+            start_line, start_col, end_line, end_col, part = next(self._spliter)
+
+        return Statement.from_statement_iterator_element(
+            (start_line + 1, start_col, end_line + 1, end_col, part)
+        )
+
+    def peek(self, default=_SENTINEL) -> Statement:
         """Return the item that will be next returned from ``next()``.
 
         Return ``default`` if there are no items left. If ``default`` is not
@@ -273,107 +482,18 @@ class BaseIterator(ty.Generic[T], Iterator[T]):
         """
         if not self._cache:
             try:
-                self._cache.append(next(self._it))
+                self._cache.append(self._get_next())
             except StopIteration:
                 if default is _SENTINEL:
                     raise
                 return default
         return self._cache[0]
 
-    def __next__(self) -> T:
+    def __next__(self) -> Statement:
         if self._cache:
             return self._cache.popleft()
-
-        return next(self._it)
-
-
-class StatementIterator(BaseIterator[Tuple[int, str]]):
-    """Yield position and statement within a string,
-    ending when all the line is consumed.
-
-    Elements are separated by delimiter/s and leading and trailing spaces
-    are (optionally) removed.
-
-    By default, spaces are removed and no delimiter is defined.
-
-    >>> si = StatementIterator(" spam ")
-    >>> si.peek()
-    0, "spam"
-    >>> tuple(si)
-    ((0, "spam"), )
-
-    The behavior can be customized by subclassing
-
-    >>> class CustomStatementIterator(StatementIterator):
-    ...     _strip_spaces = False
-    ...     _delimiters = {"#": (DelimiterMode.WITH_NEXT, True)}
-
-    or equivalent:
-
-    >>> CustomStatementIterator = StatementIterator.subclass_with(strip_spaces=False,
-    ...                                                           delimiters = {"#": (DelimiterMode.WITH_NEXT, True)})
-
-    """
-
-    _strip_spaces: bool = True
-    _delimiters: Optional[Dict[str, Tuple[DelimiterMode, bool]]] = None
-
-    @classmethod
-    def from_line(cls, line: str):
-        if cls._delimiters:
-            it = iter(isplit_mode(cls._delimiters, line))
         else:
-            it = iter(((0, line),))
-
-        if cls._strip_spaces:
-            it = ((colno, s.strip()) for colno, s in it)
-
-        return cls(it)
-
-    @classmethod
-    def subclass_with(cls, *, strip_spaces=True, delimiters: dict = None):
-        """Creates a new subclass in one line."""
-
-        return type(
-            "CustomStatementIterator",
-            (cls,),
-            dict(_strip_spaces=strip_spaces, _delimiters=delimiters or {}),
-        )
-
-
-class SequenceIterator(BaseIterator[Tuple[int, int, str]]):
-    """Yield line, position and statement within elements of a sequence.
-
-    These sub-elements are parsed from the elements used a StatementIterator,
-    and it can be customized by subclassing this class.
-
-    >>> CustomStatementIterator = StatementIterator.subclass_with(strip_spaces=False)
-    >>> class CustomSequenceIterator(SequenceIterator):
-    ...     _statement_iterator_class = CustomStatementIterator
-    """
-
-    _statement_iterator_class: Type[StatementIterator] = StatementIterator
-
-    @classmethod
-    def from_lines(cls, lines: Iterable[str]):
-        it = (
-            (lineno, colno, s)
-            for lineno, line in enumerate(lines, 1)
-            for (colno, s) in cls._statement_iterator_class.from_line(line)
-            if s
-        )
-
-        return cls(it)
-
-    @classmethod
-    def subclass_with(cls, *, statement_iterator_class):
-        """Creates a new subclass in one line."""
-
-        return type(
-            "CustomSequenceIterator",
-            (cls,),
-            dict(_statement_iterator_class=statement_iterator_class),
-        )
+            return self._get_next()
 
 
 ###########
@@ -393,7 +513,7 @@ Multi = ty.Tuple[ty.Union[PST, ParsingError], ...]
 
 
 @dataclass(frozen=True)
-class ParsedStatement(ty.Generic[CT], Element):
+class ParsedStatement(ty.Generic[CT], Statement):
     """A single parsed statement.
 
     In order to write your own, you need to subclass it as a
@@ -435,8 +555,19 @@ class ParsedStatement(ty.Generic[CT], Element):
         return cls.from_string(s)
 
     @classmethod
+    def from_statement_and_config(
+        cls: Type[PST], statement: Statement, config: CT
+    ) -> FromString[PST]:
+        out = cls.from_string_and_config(statement.raw, config)
+        if out is None:
+            return None
+        out.set_position(*statement.get_position())
+        out.set_raw(statement.raw)
+        return out
+
+    @classmethod
     def consume(
-        cls: Type[PST], sequence_iterator: SequenceIterator, config: CT
+        cls: Type[PST], statement_iterator: StatementIterator, config: CT
     ) -> NullableConsume[PST]:
         """Peek into the iterator and try to parse.
 
@@ -446,12 +577,11 @@ class ParsedStatement(ty.Generic[CT], Element):
         3. a subclass of ParsingError: the string could be parsed with this class but there is
            an error, advance the iterator.
         """
-        lineno, colno, statement = sequence_iterator.peek()
-        parsed_statement = cls.from_string_and_config(statement, config)
+        statement = statement_iterator.peek()
+        parsed_statement = cls.from_statement_and_config(statement, config)
         if parsed_statement is None:
             return None
-        next(sequence_iterator)
-        parsed_statement.set_line_col(lineno, colno)
+        next(statement_iterator)
         return parsed_statement
 
 
@@ -470,6 +600,33 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
     body: Tuple[Consume[IPST], ...]
     closing: Consume[CPST]
 
+    delimiters = {}
+
+    @property
+    def start_line(self):
+        return self.opening.start_line
+
+    @property
+    def start_col(self):
+        return self.opening.start_col
+
+    @property
+    def end_line(self):
+        return self.closing.end_line
+
+    @property
+    def end_col(self):
+        return self.closing.end_col
+
+    def get_position(self):
+        return self.start_line, self.start_col, self.end_line, self.end_col
+
+    @property
+    def format_position(self):
+        if self.start_line == -1:
+            return "N/A"
+        return "%d,%d-%d,%d" % self.get_position()
+
     @classmethod
     def subclass_with(cls, *, opening=None, body=None, closing=None):
         @dataclass(frozen=True)
@@ -485,7 +642,7 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
 
         return CustomBlock
 
-    def __iter__(self) -> Iterator[Element]:
+    def __iter__(self) -> Iterator[Statement]:
         yield self.opening
         for el in self.body:
             if isinstance(el, Block):
@@ -498,7 +655,7 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
     # Convenience methods to iterate parsed statements
     ###################################################
 
-    _ElementT = ty.TypeVar("_ElementT", bound=Element)
+    _ElementT = ty.TypeVar("_ElementT", bound=Statement)
 
     def filter_by(self, *klass: Type[_ElementT]) -> Iterator[_ElementT]:
         """Yield elements of a given class or classes."""
@@ -542,68 +699,71 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
 
     @classmethod
     def consume_opening(
-        cls: Type[BT], sequence_iterator: SequenceIterator, config: CT
+        cls: Type[BT], statement_iterator: StatementIterator, config: CT
     ) -> NullableConsume[OPST]:
         """Peek into the iterator and try to parse with any of the opening classes.
 
         See `ParsedStatement.consume` for more details.
         """
         for c in cls.opening_classes:
-            el = c.consume(sequence_iterator, config)
+            el = c.consume(statement_iterator, config)
             if el is not None:
                 return el
         return None
 
     @classmethod
     def consume_body(
-        cls, sequence_iterator: SequenceIterator, config: CT
+        cls, statement_iterator: StatementIterator, config: CT
     ) -> Consume[IPST]:
         """Peek into the iterator and try to parse with any of the body classes.
 
         If the statement cannot be parsed, a UnknownStatement is returned.
         """
         for c in cls.body_classes:
-            el = c.consume(sequence_iterator, config)
+            el = c.consume(statement_iterator, config)
             if el is not None:
                 return el
-        el = next(sequence_iterator)
-        return UnknownStatement.from_line_col_statement(*el)
+        el = next(statement_iterator)
+        return UnknownStatement.from_statement(el)
 
     @classmethod
     def consume_closing(
-        cls: Type[BT], sequence_iterator: SequenceIterator, config: CT
+        cls: Type[BT], statement_iterator: StatementIterator, config: CT
     ) -> NullableConsume[CPST]:
         """Peek into the iterator and try to parse with any of the opening classes.
 
         See `ParsedStatement.consume` for more details.
         """
         for c in cls.closing_classes:
-            el = c.consume(sequence_iterator, config)
+            el = c.consume(statement_iterator, config)
             if el is not None:
                 return el
         return None
 
     @classmethod
     def consume_body_closing(
-        cls: Type[BT], opening: OPST, sequence_iterator: SequenceIterator, config: CT
+        cls: Type[BT], opening: OPST, statement_iterator: StatementIterator, config: CT
     ) -> BT:
         body = []
         closing = None
+        last_line = opening.end_line
         while closing is None:
             try:
-                closing = cls.consume_closing(sequence_iterator, config)
+                closing = cls.consume_closing(statement_iterator, config)
                 if closing is not None:
                     continue
-                el = cls.consume_body(sequence_iterator, config)
+                el = cls.consume_body(statement_iterator, config)
                 body.append(el)
+                last_line = el.end_line
             except StopIteration:
                 closing = cls.on_stop_iteration(config)
+                closing.set_position(last_line + 1, 0, last_line + 1, 0)
 
         return cls(opening, tuple(body), closing)
 
     @classmethod
     def consume(
-        cls: Type[BT], sequence_iterator: SequenceIterator, config: CT
+        cls: Type[BT], statement_iterator: StatementIterator, config: CT
     ) -> Optional[BT]:
         """Try consume the block.
 
@@ -611,11 +771,11 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
         1. The opening was not matched, return None.
         2. A subclass of Block, where body and closing migh contain errors.
         """
-        opening = cls.consume_opening(sequence_iterator, config)
+        opening = cls.consume_opening(statement_iterator, config)
         if opening is None:
             return None
 
-        return cls.consume_body_closing(opening, sequence_iterator, config)
+        return cls.consume_body_closing(opening, statement_iterator, config)
 
     @classmethod
     def on_stop_iteration(cls, config):
@@ -672,12 +832,6 @@ class EOS(ParsedStatement[CT]):
     def from_string_and_config(cls: Type[PST], s: str, config: CT) -> FromString[PST]:
         return cls()
 
-    def __str__(self):
-        return "EOS()"
-
-    def __repr__(self):
-        return "EOS()"
-
 
 class RootBlock(ty.Generic[IPST, CT], Block[BOS, IPST, EOS, CT]):
     """A sequence of statement flanked by the beginning and ending of stream."""
@@ -698,15 +852,17 @@ class RootBlock(ty.Generic[IPST, CT], Block[BOS, IPST, EOS, CT]):
 
     @classmethod
     def consume_opening(
-        cls: Type[RBT], sequence_iterator: SequenceIterator, config: CT
+        cls: Type[RBT], statement_iterator: StatementIterator, config: CT
     ) -> NullableConsume[BOS]:
         raise RuntimeError(
             "Implementation error, 'RootBlock.consume_opening' should never be called"
         )
 
     @classmethod
-    def consume(cls: Type[RBT], sequence_iterator: SequenceIterator, config: CT) -> RBT:
-        block = super().consume(sequence_iterator, config)
+    def consume(
+        cls: Type[RBT], statement_iterator: StatementIterator, config: CT
+    ) -> RBT:
+        block = super().consume(statement_iterator, config)
         if block is None:
             raise RuntimeError(
                 "Implementation error, 'RootBlock.consume' should never return None"
@@ -715,7 +871,7 @@ class RootBlock(ty.Generic[IPST, CT], Block[BOS, IPST, EOS, CT]):
 
     @classmethod
     def consume_closing(
-        cls: Type[RBT], sequence_iterator: SequenceIterator, config: CT
+        cls: Type[RBT], statement_iterator: StatementIterator, config: CT
     ) -> NullableConsume[EOS]:
         return None
 
@@ -767,7 +923,12 @@ class Parser(ty.Generic[RBT, CT]):
     """Parser class."""
 
     #: class to iterate through statements in a source unit.
-    _sequence_iterator_class: Type[SequenceIterator] = SequenceIterator
+    _statement_iterator_class: Type[StatementIterator] = StatementIterator
+
+    #: Delimiters.
+    _delimiters: DelimiterDictT = SPLIT_EOL
+
+    _strip_spaces: bool = True
 
     #: root block class containing statements and blocks can be parsed.
     _root_block_class: Type[RBT]
@@ -822,8 +983,8 @@ class Parser(ty.Generic[RBT, CT]):
         if bos is None:
             bos = BOS(Hash.from_bytes(self._hasher, b))
 
-        sic = self._sequence_iterator_class.from_lines(
-            map(lambda p: p.decode(self._encoding), b.splitlines(keepends=False))
+        sic = self._statement_iterator_class(
+            b.decode(self._encoding), self._delimiters, self._strip_spaces
         )
 
         parsed = self._root_block_class.consume_body_closing(bos, sic, self._config)
@@ -846,7 +1007,7 @@ class Parser(ty.Generic[RBT, CT]):
 
         bos = BOF(
             Hash.from_bytes(self._hasher, content), path, path.stat().st_mtime
-        ).set_line_col(0, 0)
+        ).set_simple_position(0, 0, 0)
         return self.parse_bytes(content, bos)
 
     def parse_resource_from_file(
@@ -884,7 +1045,7 @@ class Parser(ty.Generic[RBT, CT]):
 
         bos = BOR(
             Hash.from_bytes(self._hasher, content), package, resource_name
-        ).set_line_col(0, 0)
+        ).set_simple_position(0, 0, 0)
 
         return self.parse_bytes(content, bos)
 
@@ -1049,6 +1210,8 @@ def parse(
 
 
     """
+    if delimiters is None:
+        delimiters = SPLIT_EOL
 
     if isinstance(spec, type) and issubclass(spec, Parser):
         CustomParser = spec
@@ -1088,12 +1251,9 @@ def parse(
 
         class CustomParser(Parser):
 
-            _sequence_iterator_class = SequenceIterator.subclass_with(
-                statement_iterator_class=StatementIterator.subclass_with(
-                    strip_spaces=strip_spaces, delimiters=delimiters
-                )
-            )
+            _delimiters = delimiters
             _root_block_class = CustomRootBlock
+            _strip_spaces = strip_spaces
 
     parser = CustomParser(config, prefer_resource_as_file=prefer_resource_as_file)
 

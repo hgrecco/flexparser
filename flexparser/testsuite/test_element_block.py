@@ -18,18 +18,23 @@ MyBlock2 = fp.Block.subclass_with(
 
 MyRoot2 = fp.RootBlock.subclass_with(body=(Comment, EqualFloat))
 
+FIRST_NUMBER = 1
+
 
 def test_formatting():
     obj = EqualFloat.from_string("a = 3.1")
-    assert obj.format_line_col == "(line: -1, col: -1)"
-    obj.set_line_col(10, 3)
-    assert obj.format_line_col == "(line: 10, col: 3)"
-    assert str(obj) == "EqualFloat(lineno=10, colno=3, a='a', b=3.1)"
+    assert obj.format_position == "N/A"
+    obj.set_simple_position(10, 3, 7)
+    assert obj.format_position == "10,3-10,10"
+    assert (
+        str(obj)
+        == "EqualFloat(start_line=10, start_col=3, end_line=10, end_col=10, raw=None, a='a', b=3.1)"
+    )
 
     obj = EqualFloat.from_string("%a = 3.1")
-    assert obj.format_line_col == "(line: -1, col: -1)"
-    obj.set_line_col(10, 3)
-    assert obj.format_line_col == "(line: 10, col: 3)"
+    assert obj.format_position == "N/A"
+    obj.set_simple_position(10, 3, 8)
+    assert obj.format_position == "10,3-10,11"
 
 
 def test_parse_equal_float():
@@ -40,28 +45,31 @@ def test_parse_equal_float():
     assert EqualFloat.from_string("a = 3f1") == CannotParseToFloat("3f1")
 
     obj = EqualFloat.from_string("a = 3f1")
-    assert str(obj) == "CannotParseToFloat(lineno=-1, colno=-1, value='3f1')"
+    assert (
+        str(obj)
+        == "CannotParseToFloat(start_line=None, start_col=None, end_line=None, end_col=None, raw=None, value='3f1')"
+    )
 
 
 def test_consume_equal_float():
-    f = lambda s: fp.SequenceIterator(iter(((3, 4, s),)))
-    assert EqualFloat.consume(f("a = 3.1"), None) == EqualFloat("a", 3.1).set_line_col(
-        3, 4
-    )
+    f = lambda s: fp.StatementIterator(s, fp.SPLIT_EOL)
+    assert EqualFloat.consume(f("a = 3.1"), None) == EqualFloat("a", 3.1).set_position(
+        1, 0, 1, 7
+    ).set_raw("a = 3.1")
     assert EqualFloat.consume(f("a"), None) is None
 
     assert EqualFloat.consume(f("%a = 3.1"), None) == NotAValidIdentifier(
         "%a"
-    ).set_line_col(3, 4)
+    ).set_position(1, 0, 1, 8).set_raw("%a = 3.1")
     assert EqualFloat.consume(f("a = 3f1"), None) == CannotParseToFloat(
         "3f1"
-    ).set_line_col(3, 4)
+    ).set_position(1, 0, 1, 7).set_raw("a = 3f1")
 
 
 @pytest.mark.parametrize("klass", (MyRoot, MyRoot2))
 def test_stream_block(klass):
-    lines = "# hola\nx=1.0".split("\n")
-    si = fp.SequenceIterator.from_lines(lines)
+    lines = "# hola\nx=1.0"
+    si = fp.StatementIterator(lines, fp.SPLIT_EOL)
 
     mb = klass.consume_body_closing(fp.BOS(fp.Hash.nullhash()), si, None)
     assert isinstance(mb.opening, fp.BOS)
@@ -69,8 +77,12 @@ def test_stream_block(klass):
     body = tuple(mb.body)
     assert len(body) == 2
     assert body == (
-        Comment("# hola").set_line_col(0, 0),
-        EqualFloat("x", 1.0).set_line_col(1, 0),
+        Comment("# hola")
+        .set_position(FIRST_NUMBER + 0, 0, FIRST_NUMBER + 0, 6)
+        .set_raw("# hola"),
+        EqualFloat("x", 1.0)
+        .set_position(FIRST_NUMBER + 1, 0, FIRST_NUMBER + 1, 5)
+        .set_raw("x=1.0"),
     )
     assert tuple(mb) == (mb.opening, *body, mb.closing)
     assert not mb.has_errors
@@ -78,8 +90,8 @@ def test_stream_block(klass):
 
 @pytest.mark.parametrize("klass", (MyRoot, MyRoot2))
 def test_stream_block_error(klass):
-    lines = "# hola\nx=1f0".split("\n")
-    si = fp.SequenceIterator.from_lines(lines)
+    lines = "# hola\nx=1f0"
+    si = fp.StatementIterator(lines, fp.SPLIT_EOL)
 
     mb = klass.consume_body_closing(fp.BOS(fp.Hash.nullhash()), si, None)
     assert isinstance(mb.opening, fp.BOS)
@@ -87,27 +99,39 @@ def test_stream_block_error(klass):
     body = tuple(mb.body)
     assert len(body) == 2
     assert body == (
-        Comment("# hola").set_line_col(0, 0),
-        CannotParseToFloat("1f0").set_line_col(1, 0),
+        Comment("# hola").set_simple_position(FIRST_NUMBER + 0, 0, 6).set_raw("# hola"),
+        CannotParseToFloat("1f0")
+        .set_simple_position(FIRST_NUMBER + 1, 0, 5)
+        .set_raw("x=1f0"),
     )
     assert tuple(mb) == (mb.opening, *body, mb.closing)
     assert mb.has_errors
-    assert mb.errors == (CannotParseToFloat("1f0").set_line_col(1, 0),)
+    assert mb.errors == (
+        CannotParseToFloat("1f0")
+        .set_simple_position(FIRST_NUMBER + 1, 0, 5)
+        .set_raw("x=1f0"),
+    )
 
 
 @pytest.mark.parametrize("klass", (MyBlock, MyBlock2))
 def test_block(klass):
-    lines = "@begin\n# hola\nx=1.0\n@end".split("\n")
-    si = fp.SequenceIterator.from_lines(lines)
+    lines = "@begin\n# hola\nx=1.0\n@end"
+    si = fp.StatementIterator(lines, fp.SPLIT_EOL)
 
     mb = klass.consume(si, None)
-    assert mb.opening == Open().set_line_col(0, 0)
-    assert mb.closing == Close().set_line_col(3, 0)
+    assert mb.opening == Open().set_simple_position(FIRST_NUMBER + 0, 0, 6).set_raw(
+        "@begin"
+    )
+    assert mb.closing == Close().set_simple_position(FIRST_NUMBER + 3, 0, 4).set_raw(
+        "@end"
+    )
     body = tuple(mb.body)
     assert len(body) == 2
     assert mb.body == (
-        Comment("# hola").set_line_col(1, 0),
-        EqualFloat("x", 1.0).set_line_col(2, 0),
+        Comment("# hola").set_simple_position(FIRST_NUMBER + 1, 0, 6).set_raw("# hola"),
+        EqualFloat("x", 1.0)
+        .set_simple_position(FIRST_NUMBER + 2, 0, 5)
+        .set_raw("x=1.0"),
     )
 
     assert tuple(mb) == (mb.opening, *mb.body, mb.closing)
@@ -116,17 +140,21 @@ def test_block(klass):
 
 @pytest.mark.parametrize("klass", (MyBlock, MyBlock2))
 def test_unfinished_block(klass):
-    lines = "@begin\n# hola\nx=1.0".split("\n")
-    si = fp.SequenceIterator.from_lines(lines)
+    lines = "@begin\n# hola\nx=1.0"
+    si = fp.StatementIterator(lines, fp.SPLIT_EOL)
 
     mb = klass.consume(si, None)
-    assert mb.opening == Open().set_line_col(0, 0)
-    assert mb.closing == fp.UnexpectedEOF().set_line_col(-1, -1)
+    assert mb.opening == Open().set_simple_position(FIRST_NUMBER + 0, 0, 6).set_raw(
+        "@begin"
+    )
+    assert mb.closing == fp.UnexpectedEOF().set_simple_position(FIRST_NUMBER + 3, 0, 0)
     body = tuple(mb.body)
     assert len(body) == 2
     assert mb.body == (
-        Comment("# hola").set_line_col(1, 0),
-        EqualFloat("x", 1.0).set_line_col(2, 0),
+        Comment("# hola").set_simple_position(FIRST_NUMBER + 1, 0, 6).set_raw("# hola"),
+        EqualFloat("x", 1.0)
+        .set_simple_position(FIRST_NUMBER + 2, 0, 5)
+        .set_raw("x=1.0"),
     )
 
     assert tuple(mb) == (mb.opening, *mb.body, mb.closing)

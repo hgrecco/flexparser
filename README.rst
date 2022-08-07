@@ -134,12 +134,13 @@ will produce the following output:
 
 .. code-block:: text
 
-    BOF(lineno=0, colno=0, content_hash=Hash(algorithm_name='blake2b', hexdigest='37bc23cde7cad3ece96b7abf64906c84decc116de1e0486679eb6ca696f233a403f756e2e431063c82abed4f0e342294c2fe71af69111faea3765b78cb90c03f'), path=PosixPath('/Users/grecco/Documents/code/flexparser/examples/in_readme/source.txt'), mtime=1658550284.9419456)
-    Assigment(lineno=1, colno=0, lhs='one', rhs='other')
-    InvalidIdentifier(lineno=2, colno=0, value='2two')
-    Assigment(lineno=3, colno=0, lhs='three', rhs='newvalue')
-    UnknownStatement(lineno=4, colno=0, statement='one == three')
-    EOS(lineno=-1, colno=-1)
+    BOF(start_line=0, start_col=0, end_line=0, end_col=0, raw=None, content_hash=Hash(algorithm_name='blake2b', hexdigest='37bc23cde7cad3ece96b7abf64906c84decc116de1e0486679eb6ca696f233a403f756e2e431063c82abed4f0e342294c2fe71af69111faea3765b78cb90c03f'), path=PosixPath('/Users/grecco/Documents/code/flexparser/examples/in_readme/source1.txt'), mtime=1658550284.9419456)
+    Assigment(start_line=1, start_col=0, end_line=1, end_col=12, raw='one <- other', lhs='one', rhs='other')
+    InvalidIdentifier(start_line=2, start_col=0, end_line=2, end_col=11, raw='2two <- new', value='2two')
+    Assigment(start_line=3, start_col=0, end_line=3, end_col=17, raw='three <- newvalue', lhs='three', rhs='newvalue')
+    UnknownStatement(start_line=4, start_col=0, end_line=4, end_col=12, raw='one == three')
+    EOS(start_line=5, start_col=0, end_line=5, end_col=0, raw=None)
+
 
 The result is a collection of ``ParsedStatement`` or ``ParsingError`` (flanked by
 ``BOS`` and ``EOS`` indicating beginning and ending of stream respectively).
@@ -177,12 +178,13 @@ and run it again:
 
 .. code-block:: text
 
-    BOS(lineno=0, colno=0)
-    Assigment(lineno=1, colno=0, lhs='one', rhs='other')
-    InvalidIdentifier(lineno=2, colno=0, origin='', value='2two')
-    Assigment(lineno=3, colno=0, lhs='three', rhs='newvalue')
-    EqualityComparison(lineno=4, colno=0,  lhs='one', rhs='three')
-    EOS(lineno=-1, colno=-1)
+    BOF(start_line=0, start_col=0, end_line=0, end_col=0, raw=None, content_hash=Hash(algorithm_name='blake2b', hexdigest='37bc23cde7cad3ece96b7abf64906c84decc116de1e0486679eb6ca696f233a403f756e2e431063c82abed4f0e342294c2fe71af69111faea3765b78cb90c03f'), path=PosixPath('/Users/grecco/Documents/code/flexparser/examples/in_readme/source1.txt'), mtime=1658550284.9419456)
+    Assigment(start_line=1, start_col=0, end_line=1, end_col=12, raw='one <- other', lhs='one', rhs='other')
+    InvalidIdentifier(start_line=2, start_col=0, end_line=2, end_col=11, raw='2two <- new', value='2two')
+    Assigment(start_line=3, start_col=0, end_line=3, end_col=17, raw='three <- newvalue', lhs='three', rhs='newvalue')
+    EqualityComparison(start_line=4, start_col=0, end_line=4, end_col=12, raw='one == three', lhs='one', rhs='three')
+    EOS(start_line=5, start_col=0, end_line=5, end_col=0, raw=None)
+
 
 You need to group certain statements together: welcome to ``Block``
 This construct allows you to group
@@ -219,12 +221,12 @@ Run the code:
 
 .. code-block:: text
 
-    BOS(lineno=0, colno=0)
-    UnknownStatement(lineno=1, colno=0, origin='', statement='one <- other')
-    UnknownStatement(lineno=2, colno=0, origin='', statement='2two <- new')
-    UnknownStatement(lineno=3, colno=0, origin='', statement='three <- newvalue')
-    Equality(lineno=4, colno=0, lhs='one', rhs='three')
-    EOS(lineno=-1, colno=-1)
+    BOF(start_line=0, start_col=0, end_line=0, end_col=0, raw=None, content_hash=Hash(algorithm_name='blake2b', hexdigest='37bc23cde7cad3ece96b7abf64906c84decc116de1e0486679eb6ca696f233a403f756e2e431063c82abed4f0e342294c2fe71af69111faea3765b78cb90c03f'), path=PosixPath('/Users/grecco/Documents/code/flexparser/examples/in_readme/source1.txt'), mtime=1658550284.9419456)
+    UnknownStatement(start_line=1, start_col=0, end_line=1, end_col=12, raw='one <- other')
+    UnknownStatement(start_line=2, start_col=0, end_line=2, end_col=11, raw='2two <- new')
+    UnknownStatement(start_line=3, start_col=0, end_line=3, end_col=17, raw='three <- newvalue')
+    UnknownStatement(start_line=4, start_col=0, end_line=4, end_col=12, raw='one == three')
+    EOS(start_line=5, start_col=0, end_line=5, end_col=0, raw=None)
 
 
 Notice that there are a lot of ``UnknownStatement`` now, because we instructed
@@ -243,48 +245,47 @@ and try again:
 
 .. code-block:: text
 
-    BOS(lineno=0, colno=0)
-    Begin(lineno=1, colno=0)
-    Assigment(lineno=2, colno=0, lhs='one', rhs='other')
-    InvalidIdentifier(lineno=3, colno=0, origin='', value='2two')
-    Assigment(lineno=4, colno=0, lhs='three', rhs='newvalue')
-    End(lineno=5, colno=0)
-    Equality(lineno=6, colno=0, lhs='one', rhs='three')
-    EOS(lineno=-1, colno=-1)
+    BOF(start_line=0, start_col=0, end_line=0, end_col=0, raw=None, content_hash=Hash(algorithm_name='blake2b', hexdigest='3d8ce0051dcdd6f0f80ef789a0df179509d927874f242005ac41ed886ae0b71a30b845b9bfcb30194461c0ef6a3ca324c36f411dfafc7e588611f1eb0269bb5a'), path=PosixPath('/Users/grecco/Documents/code/flexparser/examples/in_readme/source2.txt'), mtime=1658550707.1248093)
+    Begin(start_line=1, start_col=0, end_line=1, end_col=5, raw='begin')
+    Assigment(start_line=2, start_col=0, end_line=2, end_col=12, raw='one <- other', lhs='one', rhs='other')
+    InvalidIdentifier(start_line=3, start_col=0, end_line=3, end_col=11, raw='2two <- new', value='2two')
+    Assigment(start_line=4, start_col=0, end_line=4, end_col=17, raw='three <- newvalue', lhs='three', rhs='newvalue')
+    End(start_line=5, start_col=0, end_line=5, end_col=3, raw='end')
+    EqualityComparison(start_line=6, start_col=0, end_line=6, end_col=12, raw='one == three', lhs='one', rhs='three')
+    EOS(start_line=7, start_col=0, end_line=7, end_col=0, raw=None)
 
 
 Until now we have used ``parsed.iter_statements`` to iterate over all parsed statements.
 But let's look inside ``parsed``, an object of ``ParsedProject`` type. It is a thin wrapper
 over a dictionary mapping files to parsed content. Because we have provided a single file
 and this does not contain a link another, our ``parsed`` object contains a single element.
-The key is something like ``(None, 'source.txt')`` indicating that the file 'source.txt'
-was loaded from the root location (None). The content is a ``ParsedSourceFile`` object with
-the following attributes:
+The key is ``None`` indicating that the file 'source.txt' was loaded from the root location
+(None). The content is a ``ParsedSourceFile`` object with the following attributes:
 
-- **filename**: full path of the source file
+- **path**: full path of the source file
 - **mtime**: modification file of the source file
-- **content_hash**: sha1 hash of the pickled content
-  (this is currently not the same as hashing the file)
+- **content_hash**: hash of the pickled content
 - **config**: extra parameters that can be given to the parser (see below).
 
 .. code-block:: text
 
-    parse.<locals>.CustomRootBlock(
-        opening=BOS(lineno=0, colno=0),
-        body=(
-            Block.subclass_with.<locals>.CustomBlock(
-                opening=Begin(lineno=1, colno=0),
-                body=(
-                    Assigment(lineno=2, colno=0, lhs='one', rhs='other'),
-                    InvalidIdentifier(lineno=3, colno=0, origin='', value='2two'),
-                    Assigment(lineno=4, colno=0, lhs='three', rhs='newvalue')
-                ),
-                closing=End(lineno=5, colno=0)
-              ),
-            Equality(lineno=6, colno=0, lhs='one', rhs='three')
-        ),
-        closing=EOS(lineno=-1, colno=-1)
+    ParsedSource(
+        parsed_source=parse.<locals>.CustomRootBlock(
+            opening=BOF(start_line=0, start_col=0, end_line=0, end_col=0, raw=None, content_hash=Hash(algorithm_name='blake2b', hexdigest='3d8ce0051dcdd6f0f80ef789a0df179509d927874f242005ac41ed886ae0b71a30b845b9bfcb30194461c0ef6a3ca324c36f411dfafc7e588611f1eb0269bb5a'), path=PosixPath('/Users/grecco/Documents/code/flexparser/examples/in_readme/source2.txt'), mtime=1658550707.1248093),
+            body=(
+                Block.subclass_with.<locals>.CustomBlock(
+                    opening=Begin(start_line=1, start_col=0, end_line=1, end_col=5, raw='begin'),
+                    body=(
+                        Assigment(start_line=2, start_col=0, end_line=2, end_col=12, raw='one <- other', lhs='one', rhs='other'),
+                        InvalidIdentifier(start_line=3, start_col=0, end_line=3, end_col=11, raw='2two <- new', value='2two'),
+                        Assigment(start_line=4, start_col=0, end_line=4, end_col=17, raw='three <- newvalue', lhs='three', rhs='newvalue')
+                    ),
+                    closing=End(start_line=5, start_col=0, end_line=5, end_col=3, raw='end')),
+                EqualityComparison(start_line=6, start_col=0, end_line=6, end_col=12, raw='one == three', lhs='one', rhs='three')),
+            closing=EOS(start_line=7, start_col=0, end_line=7, end_col=0, raw=None)),
+        config=None
     )
+
 
 A few things to notice:
 
@@ -345,9 +346,8 @@ one of the known classes. So it is fair to ask what is an statement in this
 context and how can you configure it to your needs. A text file is split into
 non overlapping strings called **statements**. Parsing work as follows:
 
-1. each file is split in lines.
-2. each line is split into statements.
-3. each statement is parsed with the first of the contextually
+1. each file is split into statements (can be single or multi line).
+2. each statement is parsed with the first of the contextually
    available ParsedStatement or Block subclassed that returns
    a ``ParsedStatement`` or ``ParsingError``
 
@@ -359,17 +359,22 @@ You can customize how to split each line into statements with two arguments:
 - **delimiters** (`dict`): indicates how each line must be subsplit.
   (default: do not divide)
 
-An delimiter example might be ``{";": (fp.DelimiterMode.SKIP, False)}`` which
-tells the statementizer (sorry) that when a ";" is found a new statement should
+An delimiter example might be
+``{";": (fp.DelimiterInclude.SKIP, fp.DelimiterAction.CONTINUE)}``
+which tells the statementizer (sorry) that when a ";" is found a new statement should
 begin. ``DelimiterMode.SKIP`` tells that ";" should not be added to the previous
-statement nor to the next. Other valid values are ``WITH_PREVIOUS`` and ``WITH_NEXT``
+statement nor to the next. Other valid values are ``SPLIT_AFTER`` and ``SPLIT_BEFORE``
 to append or prepend the delimiter character to the previous or next statement.
-The boolean tells the statementizer (sorry again) if it should
-stop split the line. If True, the rest of the line will be captured in the next
-statement. This is useful with comments. For example,
-``{"#": (fp.DelimiterMode.WITH_NEXT, True)}`` tells the statementizer (it is not
-funny anymore) that after the first "#" it should stop splitting and capture all.
-This allows
+The second element tells the statementizer (sorry again) what to do next:
+valid values are: `CONTINUE`, `CAPTURE_NEXT_TIL_EOL`, `STOP_PARSING_LINE`, and
+`STOP_PARSING`.
+
+This is useful with comments. For example,
+``{"#": (fp.DelimiterMode.WITH_NEXT, fp.DelimiterAction.CAPTURE_NEXT_TIL_EOL))}``
+tells the statementizer (it is not funny anymore) that after the first "#"
+it should stop splitting and capture all.
+
+This allows:
 
 .. code-block:: text
 
