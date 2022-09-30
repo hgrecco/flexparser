@@ -653,6 +653,11 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
                 yield el
         yield self.closing
 
+    def iter_blocks(self) -> Iterator[ty.Union[Block, Statement]]:
+        yield self.opening
+        yield from self.body
+        yield self.closing
+
     ###################################################
     # Convenience methods to iterate parsed statements
     ###################################################
@@ -1116,6 +1121,34 @@ class ParsedProject(
             if true, each file cannot be included more than once.
         """
         yield from self._iter_statements([(None, self[None])], set(), include_only_once)
+
+    def _iter_blocks(self, items, seen, include_only_once):
+        """Iter all definitions in the order they appear,
+        going into the included files.
+        """
+        for source_location, parsed in items:
+            seen.add(source_location)
+            for parsed_statement in parsed.parsed_source.iter_blocks():
+                if isinstance(parsed_statement, IncludeStatement):
+                    location = parsed.location, parsed_statement.target
+                    if location in seen and include_only_once:
+                        raise ValueError(f"{location} was already included.")
+                    yield from self._iter_blocks(
+                        ((location, self[location]),), seen, include_only_once
+                    )
+                else:
+                    yield parsed_statement
+
+    def iter_blocks(self, include_only_once=True):
+        """Iter all definitions in the order they appear,
+        going into the included files.
+
+        Parameters
+        ----------
+        include_only_once
+            if true, each file cannot be included more than once.
+        """
+        yield from self._iter_blocks([(None, self[None])], set(), include_only_once)
 
 
 def default_locator(source_location: StrictLocationT, target: str) -> StrictLocationT:
