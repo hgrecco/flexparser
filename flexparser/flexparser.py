@@ -196,6 +196,20 @@ class classproperty:  # noqa N801
         return self.fget(owner_cls)
 
 
+def is_relative_to(self, *other):
+    """Return True if the path is relative to another path or False.
+
+    In Python 3.9+ can be replaced by
+
+        path.is_relative_to(other)
+    """
+    try:
+        self.relative_to(*other)
+        return True
+    except ValueError:
+        return False
+
+
 class DelimiterInclude(enum.IntEnum):
     """Specifies how to deal with delimiters while parsing."""
 
@@ -1184,7 +1198,7 @@ def default_locator(source_location: StrictLocationT, target: str) -> StrictLoca
             )
 
         tmp = (current_path / target_path).resolve()
-        if not tmp.is_relative_to(current_path):
+        if not is_relative_to(tmp, current_path):
             raise ValueError(
                 f"Cannot refer to locations above the current location ({source_location}, {target})"
             )
