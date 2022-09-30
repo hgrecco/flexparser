@@ -77,7 +77,7 @@ for k in parsed.keys():
     print(k)
 
 print("\n\n----\n\n")
-for x in parsed.iter_statements():
+for x in parsed.iter_blocks():
     print(x)
 
 print("\n")
