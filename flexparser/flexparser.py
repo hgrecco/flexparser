@@ -115,6 +115,16 @@ class UnknownStatement(ParsingError):
 
 
 @dataclass(frozen=True)
+class UnhandledParsingError(ParsingError):
+    """Base class for all parsing exceptions in this package."""
+
+    ex: Exception
+
+    def __str__(self):
+        return f"Unhandled exception while parsing '{self.raw}' ({self.format_position}): {self.ex}"
+
+
+@dataclass(frozen=True)
 class UnexpectedEOF(ParsingError):
     """End of file was found within an open block."""
 
@@ -560,9 +570,14 @@ class ParsedStatement(ty.Generic[CT], Statement):
     def from_statement_and_config(
         cls: Type[PST], statement: Statement, config: CT
     ) -> FromString[PST]:
-        out = cls.from_string_and_config(statement.raw, config)
+        try:
+            out = cls.from_string_and_config(statement.raw, config)
+        except Exception as ex:
+            out = UnhandledParsingError(ex)
+
         if out is None:
             return None
+
         out.set_position(*statement.get_position())
         out.set_raw(statement.raw)
         return out
