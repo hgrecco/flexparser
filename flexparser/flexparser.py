@@ -1202,51 +1202,32 @@ def default_locator(source_location: StrictLocationT, target: str) -> StrictLoca
     )
 
 
+DefinitionT = ty.Union[ty.Type[Block], ty.Type[ParsedStatement]]
+
 SpecT = ty.Union[
     ty.Type[Parser],
-    ty.Union[ty.Type[Block], ty.Type[ParsedStatement]],
-    ty.Iterable[ty.Union[ty.Type[Block], ty.Type[ParsedStatement]]],
+    DefinitionT,
+    ty.Iterable[DefinitionT],
     ty.Type[RootBlock],
 ]
 
 
-def parse(
-    entry_point: SourceLocationT,
-    spec: SpecT,
-    config=None,
-    *,
-    strip_spaces: bool = True,
-    delimiters=None,
-    locator: ty.Callable[[StrictLocationT, str], StrictLocationT] = default_locator,
-    prefer_resource_as_file: bool = True,
-) -> ParsedProject:
-    """Parse sources into a ParsedProject dictionary.
+def build_parser_class(spec: SpecT, *, strip_spaces: bool = True, delimiters=None):
+    """Build a custom parser class.
 
     Parameters
     ----------
-    entry_point
-        file or resource, given as (package_name, resource_name).
     spec
         specification of the content to parse. Can be one of the following things:
         - Parser class.
         - Block or ParsedStatement derived class.
         - Iterable of Block or ParsedStatement derived class.
         - RootBlock derived class.
-    config
-        a configuration object that will be passed to `from_string_and_config`
-        classmethod.
     strip_spaces : bool
         if True, spaces will be stripped for each statement before calling
         ``from_string_and_config``.
     delimiters : dict
-        Sepecify how the source file is split into statements (See below).
-    locator : Callable
-        function that takes the current location and a target of an IncludeStatement
-        and returns a new location.
-    prefer_resource_as_file : bool
-        if True, resources will try to be located in the filesystem if
-        available.
-
+        Specify how the source file is split into statements (See below).
 
     Delimiters dictionary
     ---------------------
@@ -1257,9 +1238,8 @@ def parse(
          delimiter string: skip it, attach keep it with previous or next string
       2. A boolean indicating if parsing should stop after fiSBT
          encountering this delimiter.
-
-
     """
+
     if delimiters is None:
         delimiters = SPLIT_EOL
 
@@ -1305,7 +1285,66 @@ def parse(
             _root_block_class = CustomRootBlock
             _strip_spaces = strip_spaces
 
-    parser = CustomParser(config, prefer_resource_as_file=prefer_resource_as_file)
+    return CustomParser
+
+
+def parse(
+    entry_point: SourceLocationT,
+    spec: SpecT,
+    config=None,
+    *,
+    strip_spaces: bool = True,
+    delimiters=None,
+    locator: ty.Callable[[StrictLocationT, str], StrictLocationT] = default_locator,
+    prefer_resource_as_file: bool = True,
+    **extra_parser_kwargs,
+) -> ParsedProject:
+    """Parse sources into a ParsedProject dictionary.
+
+    Parameters
+    ----------
+    entry_point
+        file or resource, given as (package_name, resource_name).
+    spec
+        specification of the content to parse. Can be one of the following things:
+        - Parser class.
+        - Block or ParsedStatement derived class.
+        - Iterable of Block or ParsedStatement derived class.
+        - RootBlock derived class.
+    config
+        a configuration object that will be passed to `from_string_and_config`
+        classmethod.
+    strip_spaces : bool
+        if True, spaces will be stripped for each statement before calling
+        ``from_string_and_config``.
+    delimiters : dict
+        Specify how the source file is split into statements (See below).
+    locator : Callable
+        function that takes the current location and a target of an IncludeStatement
+        and returns a new location.
+    prefer_resource_as_file : bool
+        if True, resources will try to be located in the filesystem if
+        available.
+    extra_parser_kwargs
+        extra keyword arguments to be given to the parser.
+
+    Delimiters dictionary
+    ---------------------
+        The delimiters are specified with the keys of the delimiters dict.
+    The dict files can be used to further customize the iterator. Each
+    consist of a tuple of two elements:
+      1. A value of the DelimiterMode to indicate what to do with the
+         delimiter string: skip it, attach keep it with previous or next string
+      2. A boolean indicating if parsing should stop after fiSBT
+         encountering this delimiter.
+    """
+
+    CustomParser = build_parser_class(
+        spec, strip_spaces=strip_spaces, delimiters=delimiters
+    )
+    parser = CustomParser(
+        config, prefer_resource_as_file=prefer_resource_as_file, **extra_parser_kwargs
+    )
 
     pp = ParsedProject()
 
@@ -1339,5 +1378,51 @@ def parse(
             (parsed.location, el.target)
             for el in parsed.parsed_source.filter_by(IncludeStatement)
         )
+
+    return pp
+
+
+def parse_bytes(
+    content: bytes,
+    spec: SpecT,
+    config=None,
+    *,
+    strip_spaces: bool = True,
+    delimiters=None,
+    **extra_parser_kwargs,
+) -> ParsedProject:
+    """Parse sources into a ParsedProject dictionary.
+
+    Parameters
+    ----------
+    content
+        bytes.
+    spec
+        specification of the content to parse. Can be one of the following things:
+        - Parser class.
+        - Block or ParsedStatement derived class.
+        - Iterable of Block or ParsedStatement derived class.
+        - RootBlock derived class.
+    config
+        a configuration object that will be passed to `from_string_and_config`
+        classmethod.
+    strip_spaces : bool
+        if True, spaces will be stripped for each statement before calling
+        ``from_string_and_config``.
+    delimiters : dict
+        Specify how the source file is split into statements (See below).
+    """
+
+    CustomParser = build_parser_class(
+        spec, strip_spaces=strip_spaces, delimiters=delimiters
+    )
+    parser = CustomParser(config, prefer_resource_as_file=False, **extra_parser_kwargs)
+
+    pp = ParsedProject()
+
+    pp[None] = parsed = parser.parse_bytes(content)
+
+    if any(parsed.parsed_source.filter_by(IncludeStatement)):
+        raise ValueError("parse_bytes does not support using an IncludeStatement")
 
     return pp
