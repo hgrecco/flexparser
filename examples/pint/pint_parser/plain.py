@@ -25,7 +25,7 @@ class PrefixDefinition(fp.ParsedStatement):
 
     name: str
     value: numbers.Number
-    defined_symbol: Optional[str]
+    defined_symbol: str | None
     aliases: ty.Tuple[str, ...]
 
     @classmethod
@@ -115,10 +115,10 @@ class UnitDefinition(fp.ParsedStatement):
             [converter, modifiers] = value.split(";", 1)
 
             try:
-                modifiers = dict(
-                    (key.strip(), config.to_number(value))
+                modifiers = {
+                    key.strip(): config.to_number(value)
                     for key, value in (part.split(":") for part in modifiers.split(";"))
-                )
+                }
             except common.NotNumeric as ex:
                 return errors.DefinitionSyntaxError(
                     f"Unit definition ('{name}') must contain only numbers in modifier, not {ex.value}"

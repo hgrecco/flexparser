@@ -50,7 +50,7 @@ class _Relation:
         return cls(src, dst, eq.strip())
 
     @property
-    def variables(self) -> Set[str, ...]:
+    def variables(self) -> set[str, ...]:
         """Find all variables names in the equation."""
         return set(self._varname_re.findall(self.equation))
 
@@ -114,8 +114,8 @@ class BeginContext(fp.ParsedStatement):
     )
 
     name: str
-    aliases: Tuple[str, ...]
-    defaults: Dict[str, numbers.Number]
+    aliases: tuple[str, ...]
+    defaults: dict[str, numbers.Number]
 
     @classmethod
     def from_string_and_config(
@@ -194,7 +194,7 @@ class ContextDefinition(common.DirectiveBlock):
     ]
 
     @property
-    def variables(self) -> Set[str, ...]:
+    def variables(self) -> set[str, ...]:
         """Return all variable names in all transformations."""
         return set.union(*(r.variables for r in self.body if isinstance(r, _Relation)))
 

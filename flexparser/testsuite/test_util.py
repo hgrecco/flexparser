@@ -17,13 +17,13 @@ def test_yield_types_container():
     class X:
         pass
 
-    o = typing.Tuple[float, X]
+    o = tuple[float, X]
     assert tuple(fp._yield_types(o)) == (float, X)
 
-    o = typing.Tuple[float, ...]
+    o = tuple[float, ...]
     assert tuple(fp._yield_types(o)) == (float,)
 
-    o = typing.Tuple[typing.Union[float, X], ...]
+    o = tuple[typing.Union[float, X], ...]
     assert tuple(fp._yield_types(o)) == (float, X)
 
 
@@ -36,7 +36,7 @@ def test_yield_types_union():
 
 
 def test_yield_types_list():
-    o = typing.List[float]
+    o = list[float]
     assert tuple(fp._yield_types(o)) == (float,)
 
 
