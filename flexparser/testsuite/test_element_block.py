@@ -47,7 +47,7 @@ def test_parse_equal_float():
     obj = EqualFloat.from_string("a = 3f1")
     assert (
         str(obj)
-        == "CannotParseToFloat(start_line=None, start_col=None, end_line=None, end_col=None, raw=None, value='3f1')"
+        == "CannotParseToFloat(start_line=0, start_col=0, end_line=0, end_col=0, raw=None, value='3f1')"
     )
 
 

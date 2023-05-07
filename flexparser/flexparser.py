@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import sys
 import collections
 import dataclasses
 import enum
@@ -27,20 +28,92 @@ import inspect
 import logging
 import pathlib
 import re
-import sys
 import typing as ty
 from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import cached_property
 from importlib import resources
-from typing import Optional, Tuple, Type, TypeVar, Any
+from typing import Any
 
 
-Self = TypeVar("Self")
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    from typing_extensions import TypeAlias
+
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
+
 
 _LOGGER = logging.getLogger("flexparser")
 
 _SENTINEL = object()
+
+
+class GenericInfo:
+
+    _specialized: dict[type, list[tuple[type, dict[ty.TypeVar, type]]] | None] | None = None
+
+    @staticmethod
+    def _summarize(d: dict[ty.TypeVar, type]) -> dict[ty.TypeVar, type]:
+        d = d.copy()
+        while True:
+            for k, v in d.items():
+                if isinstance(v, ty.TypeVar):
+                    d[k] = d[v]
+                    break
+            else:
+                return d
+
+            del d[v]
+
+    @classmethod
+    def _specialization(cls) -> dict[ty.TypeVar, type]:
+        if cls._specialized is None:
+            return dict()
+        
+        out: dict[ty.TypeVar, type] = {}
+        specialized = cls._specialized[cls]
+        
+        if specialized is None:
+            return {}
+        
+        for parent, content in specialized:
+            for tv, ty in content.items():
+                out[tv] = ty
+                origin = getattr(parent, "__origin__", None)
+                if origin is not None and origin in cls._specialized:
+                    out = {**out, **origin._specialization()}
+
+        return out
+
+    @classmethod
+    def specialization(cls) -> dict[ty.TypeVar, type]:
+        return GenericInfo._summarize(cls._specialization())
+
+    def __init_subclass__(cls) -> None:
+        if cls._specialized is None:
+            cls._specialized = {GenericInfo: None}
+
+        tv: list[ty.TypeVar] = []
+        entries: list[tuple[type, dict[ty.TypeVar, type]]] = []
+
+        for par in getattr(cls, "__parameters__", ()):
+            if isinstance(par, ty.TypeVar):
+                tv.append(par)
+
+        for b in getattr(cls, "__orig_bases__", ()):
+            for k in cls._specialized.keys():
+                if getattr(b, "__origin__", None) is k:
+                    entries.append((b, {k: v for k, v in zip(tv, b.__args__)}))
+                    break
+
+        cls._specialized[cls] = entries
+
+        return super().__init_subclass__()
 
 
 ################
@@ -52,23 +125,27 @@ _SENTINEL = object()
 class Statement:
     """Base class for parsed elements within a source file."""
 
-    start_line: int | None = dataclasses.field(init=False, default=None)
-    start_col: int | None = dataclasses.field(init=False, default=None)
+    is_position_set: bool = dataclasses.field(init=False, default=False, repr=False)
 
-    end_line: int | None = dataclasses.field(init=False, default=None)
-    end_col: int | None = dataclasses.field(init=False, default=None)
+    start_line: int = dataclasses.field(init=False, default=0)
+    start_col: int = dataclasses.field(init=False, default=0)
+
+    end_line: int = dataclasses.field(init=False, default=0)
+    end_col: int = dataclasses.field(init=False, default=0)
 
     raw: str | None = dataclasses.field(init=False, default=None)
 
     @classmethod
-    def from_statement(cls: type[Self], statement: Statement) -> Self:
+    def from_statement(cls, statement: Statement) -> Self:
         out = cls()
-        out.set_position(*statement.get_position())
-        out.set_raw(statement.raw)
+        if statement.is_position_set:
+            out.set_position(*statement.get_position())
+        if statement.raw is not None:
+            out.set_raw(statement.raw)
         return out
 
     @classmethod
-    def from_statement_iterator_element(cls: type[Self], values: ty.Tuple[int, int, int, int, str]) -> Self:
+    def from_statement_iterator_element(cls, values: tuple[int, int, int, int, str]) -> Self:
         out = cls()
         out.set_position(*values[:-1])
         out.set_raw(values[-1])
@@ -76,7 +153,7 @@ class Statement:
 
     @property
     def format_position(self) -> str:
-        if self.start_line is None:
+        if not self.is_position_set:
             return "N/A"
         return "%d,%d-%d,%d" % self.get_position()
 
@@ -86,10 +163,13 @@ class Statement:
             return None
         return self.raw.strip()
 
-    def get_position(self):
-        return self.start_line, self.start_col, self.end_line, self.end_col
+    def get_position(self) -> tuple[int, int, int, int]:
+        if self.is_position_set:
+            return self.start_line, self.start_col, self.end_line, self.end_col
+        return 0, 0, 0, 0
 
     def set_position(self: Self, start_line: int, start_col: int, end_line: int, end_col: int) -> Self:
+        object.__setattr__(self, "is_position_set", True)
         object.__setattr__(self, "start_line", start_line)
         object.__setattr__(self, "start_col", start_col)
         object.__setattr__(self, "end_line", end_line)
@@ -154,22 +234,22 @@ class Hash:
         )
 
     @classmethod
-    def from_bytes(cls, algorithm, b: bytes):
+    def from_bytes(cls: type[Hash], algorithm: ty.Callable[[bytes, ], Any], b: bytes) -> Hash:
         hasher = algorithm(b)
         return cls(hasher.name, hasher.hexdigest())
 
     @classmethod
-    def from_file_pointer(cls, algorithm, fp: ty.BinaryIO):
+    def from_file_pointer(cls: type[Hash], algorithm: ty.Callable[[bytes, ], Any], fp: ty.BinaryIO) -> Hash:
         return cls.from_bytes(algorithm, fp.read())
 
     @classmethod
-    def nullhash(cls: type[Self]) -> Self:
+    def nullhash(cls: type[Hash]) -> Hash:
         return cls("", "")
 
 
 def _yield_types(
-    obj: Any, valid_subclasses: tuple[Any]=(object,), recurse_origin: tuple[Any]=(tuple, list, ty.Union)
-):
+    obj: type, valid_subclasses: tuple[type]=(object,), recurse_origin: tuple[Any, ...]=(tuple, list, ty.Union)
+)-> ty.Generator[type, None, None]:
     """Recursively transverse type annotation if the
     origin is any of the types in `recurse_origin`
     and yield those type which are subclasses of `valid_subclasses`.
@@ -195,25 +275,12 @@ class classproperty:  # noqa N801
 
     """
 
-    def __init__(self, fget):
+    def __init__(self, fget): # type: ignore 
         self.fget = fget
 
-    def __get__(self, owner_self, owner_cls):
-        return self.fget(owner_cls)
+    def __get__(self, owner_self, owner_cls):# type: ignore 
+        return self.fget(owner_cls) # type: ignore 
 
-
-def is_relative_to(self, *other):
-    """Return True if the path is relative to another path or False.
-
-    In Python 3.9+ can be replaced by
-
-        path.is_relative_to(other)
-    """
-    try:
-        self.relative_to(*other)
-        return True
-    except ValueError:
-        return False
 
 
 class DelimiterInclude(enum.IntEnum):
@@ -264,7 +331,7 @@ _EOLs_set = set(DO_NOT_SPLIT_EOL.keys())
 
 
 @functools.lru_cache
-def _build_delimiter_pattern(delimiters: ty.Tuple[str, ...]) -> re.Pattern:
+def _build_delimiter_pattern(delimiters: tuple[str]) -> re.Pattern[str]:
     """Compile a tuple of delimiters into a regex expression with a capture group
     around the delimiter.
     """
@@ -275,13 +342,13 @@ def _build_delimiter_pattern(delimiters: ty.Tuple[str, ...]) -> re.Pattern:
 # Iterators
 ############
 
-DelimiterDictT = ty.Dict[str, ty.Tuple[DelimiterInclude, DelimiterAction]]
+DelimiterDictT = dict[str, tuple[DelimiterInclude, DelimiterAction]]
 
 
 class Spliter:
     """Content iterator splitting according to given delimiters.
 
-    The pattern can be changed dynamically sending a new pattern to the generator,
+    The pattern can be changed dynamically sending a new pattern to the ty.Generator,
     see DelimiterInclude and DelimiterAction for more information.
 
     The current scanning position can be changed at any time.
@@ -305,26 +372,26 @@ class Spliter:
         part of the text between delimiters.
     """
 
-    _pattern: ty.Optional[re.Pattern]
+    _pattern: re.Pattern[str] | None
     _delimiters: DelimiterDictT
 
-    __stop_searching_in_line = False
+    __stop_searching_in_line: bool = False
 
-    __pending = ""
-    __first_line_col = None
+    __pending: str = ""
+    __first_line_col: tuple[int, int] | None = None
 
-    __lines = ()
-    __lineno = 0
-    __colno = 0
+    __lines: list[str]
+    __lineno: int = 0
+    __colno: int = 0
 
     def __init__(self, content: str, delimiters: DelimiterDictT):
         self.set_delimiters(delimiters)
         self.__lines = content.splitlines(keepends=True)
 
-    def set_position(self, lineno: int, colno: int):
+    def set_position(self, lineno: int, colno: int) -> None:
         self.__lineno, self.__colno = lineno, colno
 
-    def set_delimiters(self, delimiters: DelimiterDictT):
+    def set_delimiters(self, delimiters: DelimiterDictT) -> None:
         for k, v in delimiters.items():
             if v == (DelimiterInclude.DO_NOT_SPLIT, DelimiterAction.STOP_PARSING):
                 raise ValueError(
@@ -339,10 +406,10 @@ class Spliter:
         # We add the end of line as delimiters if not present.
         self._delimiters = {**DO_NOT_SPLIT_EOL, **delimiters}
 
-    def __iter__(self):
+    def __iter__(self) -> Spliter:
         return self
 
-    def __next__(self):
+    def __next__(self) -> tuple[int, int, int, int, str]:
         if self.__lineno >= len(self.__lines):
             raise StopIteration
 
@@ -383,23 +450,27 @@ class Spliter:
 
             part = line[self.__colno : end_col]
 
-            include, action = self._delimiters.get(
-                dlm, (DelimiterInclude.SPLIT, DelimiterAction.STOP_PARSING)
-            )
+            if dlm is None:
+                include, action = DelimiterInclude.SPLIT, DelimiterAction.STOP_PARSING
+            else:
+                include, action = self._delimiters[dlm]
 
             if include == DelimiterInclude.SPLIT:
                 next_pending = ""
-            elif include == DelimiterInclude.SPLIT_AFTER:
-                end_col += len(dlm)
-                part = part + dlm
-                next_pending = ""
-            elif include == DelimiterInclude.SPLIT_BEFORE:
-                next_pending = dlm
-            elif include == DelimiterInclude.DO_NOT_SPLIT:
-                self.__pending += line[self.__colno : end_col] + dlm
-                next_pending = ""
             else:
-                raise ValueError(f"Unknown action {include}.")
+                # When dlm is None, DelimiterInclude.SPLIT
+                assert isinstance(dlm, str) 
+                if include == DelimiterInclude.SPLIT_AFTER:
+                    end_col += len(dlm)
+                    part = part + dlm
+                    next_pending = ""
+                elif include == DelimiterInclude.SPLIT_BEFORE:
+                    next_pending = dlm
+                elif include == DelimiterInclude.DO_NOT_SPLIT:
+                    self.__pending += line[self.__colno : end_col] + dlm
+                    next_pending = ""
+                else:
+                    raise ValueError(f"Unknown action {include}.")
 
             if action == DelimiterAction.STOP_PARSING:
                 # this will raise a StopIteration in the next call.
@@ -444,7 +515,7 @@ class Spliter:
 class StatementIterator:
     """Content peekable iterator splitting according to given delimiters.
 
-    The pattern can be changed dynamically sending a new pattern to the generator,
+    The pattern can be changed dynamically sending a new pattern to the ty.Generator,
     see DelimiterInclude and DelimiterAction for more information.
 
     Parameters
@@ -469,13 +540,14 @@ class StatementIterator:
     def __iter__(self):
         return self
 
-    def set_delimiters(self, delimiters: DelimiterDictT):
+    def set_delimiters(self, delimiters: DelimiterDictT) -> None:
         self._spliter.set_delimiters(delimiters)
         if self._cache:
             value = self.peek()
             # Elements are 1 based indexing, while splitter is 0 based.
             self._spliter.set_position(value.start_line - 1, value.start_col)
             self._cache.clear()
+
 
     def _get_next_strip(self) -> Statement:
         part = ""
@@ -490,7 +562,7 @@ class StatementIterator:
             end_col -= lo - len(part)
 
         return Statement.from_statement_iterator_element(
-            (start_line + 1, start_col, end_line + 1, end_col, part)
+            (start_line + 1, start_col, end_line + 1, end_col, part)    # type: ignore
         )
 
     def _get_next(self) -> Statement:
@@ -502,10 +574,10 @@ class StatementIterator:
             start_line, start_col, end_line, end_col, part = next(self._spliter)
 
         return Statement.from_statement_iterator_element(
-            (start_line + 1, start_col, end_line + 1, end_col, part)
+            (start_line + 1, start_col, end_line + 1, end_col, part)    # type: ignore
         )
 
-    def peek(self, default=_SENTINEL) -> Statement:
+    def peek(self, default: Any=_SENTINEL) -> Statement:
         """Return the item that will be next returned from ``next()``.
 
         Return ``default`` if there are no items left. If ``default`` is not
@@ -524,8 +596,7 @@ class StatementIterator:
     def __next__(self) -> Statement:
         if self._cache:
             return self._cache.popleft()
-        else:
-            return self._get_next()
+        return self._get_next()
 
 
 ###########
@@ -534,14 +605,14 @@ class StatementIterator:
 
 # Configuration type
 CT = ty.TypeVar("CT")
-PST = ty.TypeVar("PST", bound="ParsedStatement")
-LineColStr = tuple[int, int, str]
-FromString = ty.Union[None, PST, ParsingError]
-Consume = ty.Union[PST, ParsingError]
-NullableConsume = ty.Union[None, PST, ParsingError]
+PST = ty.TypeVar("PST", bound="ParsedStatement[Any]")
+LineColStr : TypeAlias = tuple[int, int, str]
+FromString : TypeAlias = PST | ParsingError | None
+Consume : TypeAlias = PST | ParsingError
+NullableConsume : TypeAlias = PST | ParsingError | None
 
-Single = ty.Union[PST, ParsingError]
-Multi = ty.Tuple[ty.Union[PST, ParsingError], ...]
+Single : TypeAlias = PST | ParsingError
+Multi : TypeAlias = tuple[PST | ParsingError]
 
 
 @dataclass(frozen=True)
@@ -590,8 +661,13 @@ class ParsedStatement(ty.Generic[CT], Statement):
     def from_statement_and_config(
         cls: type[PST], statement: Statement, config: CT
     ) -> FromString[PST]:
+        
+        raw = statement.raw
+        if raw is None:
+            return None
+        
         try:
-            out = cls.from_string_and_config(statement.raw, config)
+            out = cls.from_string_and_config(raw, config)
         except Exception as ex:
             out = UnhandledParsingError(ex)
 
@@ -599,7 +675,7 @@ class ParsedStatement(ty.Generic[CT], Statement):
             return None
 
         out.set_position(*statement.get_position())
-        out.set_raw(statement.raw)
+        out.set_raw(raw)
         return out
 
     @classmethod
@@ -622,45 +698,49 @@ class ParsedStatement(ty.Generic[CT], Statement):
         return parsed_statement
 
 
-OPST = ty.TypeVar("OPST", bound="ParsedStatement")
-IPST = ty.TypeVar("IPST", bound="ParsedStatement")
-CPST = ty.TypeVar("CPST", bound="ParsedStatement")
+OPST = ty.TypeVar("OPST", bound="ParsedStatement[Any]")
+BPST = ty.TypeVar("BPST", bound="ParsedStatement[Any]")
+CPST = ty.TypeVar("CPST", bound="ParsedStatement[Any]")
 BT = ty.TypeVar("BT", bound="Block")
-RBT = ty.TypeVar("RBT", bound="RootBlock")
+RBT = ty.TypeVar("RBT", bound="RootBlock[Any, Any]")
 
 
 @dataclass(frozen=True)
-class Block(ty.Generic[OPST, IPST, CPST, CT]):
+class Block(ty.Generic[OPST, BPST, CPST, CT], GenericInfo):
     """A sequence of statements with an opening, body and closing."""
 
     opening: Consume[OPST]
-    body: tuple[Consume[IPST], ...]
+    body: tuple[Consume[BPST], ...]
     closing: Consume[CPST]
 
-    delimiters = {}
+    delimiters: DelimiterDictT = dataclasses.field(default_factory=dict, init=False) 
 
     @property
-    def start_line(self):
+    def is_position_set(self) -> bool:
+        return self.opening.is_position_set
+
+    @property
+    def start_line(self) -> int:
         return self.opening.start_line
 
     @property
-    def start_col(self):
+    def start_col(self) -> int:
         return self.opening.start_col
 
     @property
-    def end_line(self):
+    def end_line(self) -> int:
         return self.closing.end_line
 
     @property
-    def end_col(self):
+    def end_col(self) -> int:
         return self.closing.end_col
 
-    def get_position(self):
+    def get_position(self) -> tuple[int, int, int, int]:
         return self.start_line, self.start_col, self.end_line, self.end_col
 
     @property
     def format_position(self):
-        if self.start_line is None:
+        if not self.is_position_set:
             return "N/A"
         return "%d,%d-%d,%d" % self.get_position()
 
@@ -688,7 +768,7 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
                 yield el
         yield self.closing
 
-    def iter_blocks(self) -> Iterator[ty.Union[Block, Statement]]:
+    def iter_blocks(self) -> Iterator[Block[OPST, BPST, CPST, CT] | Statement]:
         yield self.opening
         yield from self.body
         yield self.closing
@@ -699,12 +779,12 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
 
     _ElementT = ty.TypeVar("_ElementT", bound=Statement)
 
-    def filter_by(self, *klass: type[_ElementT]) -> Iterator[_ElementT]:
+    def filter_by(self, *klass: type[_ElementT]) -> ty.Generator[_ElementT, None, None]:
         """Yield elements of a given class or classes."""
         yield from (el for el in self if isinstance(el, klass))  # noqa Bug in pycharm.
 
     @cached_property
-    def errors(self) -> ty.Tuple[ParsingError, ...]:
+    def errors(self) -> tuple[ParsingError, ...]:
         """Tuple of errors found."""
         return tuple(self.filter_by(ParsingError))
 
@@ -717,23 +797,32 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
     # Statement classes
     ####################
 
-    @classproperty
-    def opening_classes(cls) -> Iterator[type[OPST]]:
+    @classmethod
+    def opening_classes(cls) -> ty.Generator[type[OPST], None, None]:
         """Classes representing any of the parsed statement that can open this block."""
-        opening = ty.get_type_hints(cls)["opening"]
-        yield from _yield_types(opening, ParsedStatement)
+        try:
+            opening = cls.specialization()[OPST]
+        except KeyError:
+            opening: type = ty.get_type_hints(cls)["opening"] # type: ignore[no-redef]
+        yield from _yield_types(opening, ParsedStatement) # type: ignore
 
-    @classproperty
-    def body_classes(cls) -> Iterator[type[IPST]]:
+    @classmethod
+    def body_classes(cls) -> ty.Generator[type[BPST], None, None]:
         """Classes representing any of the parsed statement that can be in the body."""
-        body = ty.get_type_hints(cls)["body"]
-        yield from _yield_types(body, (ParsedStatement, Block))
+        try:
+            body = cls.specialization()[BPST]
+        except KeyError:
+            body: type = ty.get_type_hints(cls)["body"] # type: ignore[no-redef]
+        yield from _yield_types(body, (ParsedStatement, Block)) # type: ignore
 
-    @classproperty
-    def closing_classes(cls) -> Iterator[type[CPST]]:
+    @classmethod
+    def closing_classes(cls) -> ty.Generator[type[CPST], None, None]:
         """Classes representing any of the parsed statement that can close this block."""
-        closing = ty.get_type_hints(cls)["closing"]
-        yield from _yield_types(closing, ParsedStatement)
+        try:
+            closing = cls.specialization()[CPST]
+        except KeyError:
+            closing: type = ty.get_type_hints(cls)["closing"] # type: ignore[no-redef]
+        yield from _yield_types(closing, ParsedStatement) # type: ignore
 
     ##########
     # Consume
@@ -741,13 +830,13 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
 
     @classmethod
     def consume_opening(
-        cls: type[BT], statement_iterator: StatementIterator, config: CT
+        cls, statement_iterator: StatementIterator, config: CT
     ) -> NullableConsume[OPST]:
         """Peek into the iterator and try to parse with any of the opening classes.
 
         See `ParsedStatement.consume` for more details.
         """
-        for c in cls.opening_classes:
+        for c in cls.opening_classes():
             el = c.consume(statement_iterator, config)
             if el is not None:
                 return el
@@ -756,27 +845,27 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
     @classmethod
     def consume_body(
         cls, statement_iterator: StatementIterator, config: CT
-    ) -> Consume[IPST]:
+    ) -> Consume[BPST]:
         """Peek into the iterator and try to parse with any of the body classes.
 
         If the statement cannot be parsed, a UnknownStatement is returned.
         """
-        for c in cls.body_classes:
+        for c in cls.body_classes():
             el = c.consume(statement_iterator, config)
             if el is not None:
                 return el
-        el = next(statement_iterator)
-        return UnknownStatement.from_statement(el)
+        unkel = next(statement_iterator)
+        return UnknownStatement.from_statement(unkel)
 
     @classmethod
     def consume_closing(
-        cls: type[BT], statement_iterator: StatementIterator, config: CT
+        cls, statement_iterator: StatementIterator, config: CT
     ) -> NullableConsume[CPST]:
         """Peek into the iterator and try to parse with any of the opening classes.
 
         See `ParsedStatement.consume` for more details.
         """
-        for c in cls.closing_classes:
+        for c in cls.closing_classes():
             el = c.consume(statement_iterator, config)
             if el is not None:
                 return el
@@ -784,10 +873,10 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
 
     @classmethod
     def consume_body_closing(
-        cls: type[BT], opening: OPST, statement_iterator: StatementIterator, config: CT
-    ) -> BT:
-        body = []
-        closing = None
+        cls, opening: OPST, statement_iterator: StatementIterator, config: CT
+    ):
+        body: list[Consume[BPST]] = []
+        closing: ty.Union[CPST, ParsingError, None, UnexpectedEOF, EOS[CT]] = None
         last_line = opening.end_line
         while closing is None:
             try:
@@ -805,8 +894,8 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
 
     @classmethod
     def consume(
-        cls: type[BT], statement_iterator: StatementIterator, config: CT
-    ) -> BT | None:
+        cls, statement_iterator: StatementIterator, config: CT
+    ):
         """Try consume the block.
 
         Possible outcomes:
@@ -816,16 +905,19 @@ class Block(ty.Generic[OPST, IPST, CPST, CT]):
         opening = cls.consume_opening(statement_iterator, config)
         if opening is None:
             return None
+        
+        if isinstance(opening, ParsingError):
+            return None
 
         return cls.consume_body_closing(opening, statement_iterator, config)
 
     @classmethod
-    def on_stop_iteration(cls, config):
+    def on_stop_iteration(cls, config: CT) -> Consume[EOS[CT]]:
         return UnexpectedEOF()
 
 
 @dataclass(frozen=True)
-class BOS(ParsedStatement[CT]):
+class BOS(ty.Generic[CT], ParsedStatement[CT]):
     """Beginning of source."""
 
     # Hasher algorithm name and hexdigest
@@ -841,7 +933,7 @@ class BOS(ParsedStatement[CT]):
 
 
 @dataclass(frozen=True)
-class BOF(BOS):
+class BOF(ty.Generic[CT], BOS[CT]):
     """Beginning of file."""
 
     path: pathlib.Path
@@ -855,7 +947,7 @@ class BOF(BOS):
 
 
 @dataclass(frozen=True)
-class BOR(BOS):
+class BOR(ty.Generic[CT], BOS[CT]):
     """Beginning of resource."""
 
     package: str
@@ -867,7 +959,7 @@ class BOR(BOS):
 
 
 @dataclass(frozen=True)
-class EOS(ParsedStatement[CT]):
+class EOS(ty.Generic[CT], ParsedStatement[CT]):
     """End of sequence."""
 
     @classmethod
@@ -875,16 +967,16 @@ class EOS(ParsedStatement[CT]):
         return cls()
 
 
-class RootBlock(ty.Generic[IPST, CT], Block[BOS, IPST, EOS, CT]):
+class RootBlock(ty.Generic[BPST, CT], Block[BOS[CT], BPST, EOS[CT], CT]):
     """A sequence of statement flanked by the beginning and ending of stream."""
 
-    opening: Single[BOS]
-    closing: Single[EOS]
+    opening: Single[BOS[CT]]
+    closing: Single[EOS[CT]]
 
     @classmethod
     def subclass_with(cls, *, body=None):
         @dataclass(frozen=True)
-        class CustomRootBlock(RootBlock):
+        class CustomRootBlock(RootBlock[BPST, CT]):
             pass
 
         if body:
@@ -894,16 +986,16 @@ class RootBlock(ty.Generic[IPST, CT], Block[BOS, IPST, EOS, CT]):
 
     @classmethod
     def consume_opening(
-        cls: type[RBT], statement_iterator: StatementIterator, config: CT
-    ) -> NullableConsume[BOS]:
+        cls, statement_iterator: StatementIterator, config: CT
+    ) -> NullableConsume[BOS[CT]]:
         raise RuntimeError(
             "Implementation error, 'RootBlock.consume_opening' should never be called"
         )
 
     @classmethod
     def consume(
-        cls: type[RBT], statement_iterator: StatementIterator, config: CT
-    ) -> RBT:
+        cls, statement_iterator: StatementIterator, config: CT
+    ):
         block = super().consume(statement_iterator, config)
         if block is None:
             raise RuntimeError(
@@ -914,21 +1006,21 @@ class RootBlock(ty.Generic[IPST, CT], Block[BOS, IPST, EOS, CT]):
     @classmethod
     def consume_closing(
         cls: type[RBT], statement_iterator: StatementIterator, config: CT
-    ) -> NullableConsume[EOS]:
+    ) -> NullableConsume[EOS[CT]]:
         return None
 
     @classmethod
-    def on_stop_iteration(cls, config):
-        return EOS()
+    def on_stop_iteration(cls, config: CT) -> EOS[CT]:
+        return EOS[CT]()
 
 
 #################
 # Source parsing
 #################
 
-ResourceT = ty.Tuple[str, str]  # package name, resource name
-StrictLocationT = ty.Union[pathlib.Path, ResourceT]
-SourceLocationT = ty.Union[str, StrictLocationT]
+ResourceT = tuple[str, str]  # package name, resource name
+StrictLocationT = pathlib.Path | ResourceT
+SourceLocationT = str | StrictLocationT
 
 
 @dataclass(frozen=True)
@@ -940,14 +1032,16 @@ class ParsedSource(ty.Generic[RBT, CT]):
     config: CT
 
     @property
-    def location(self) -> StrictLocationT:
+    def location(self) -> SourceLocationT:
+        if isinstance(self.parsed_source.opening, ParsingError):
+            raise self.parsed_source.opening
         return self.parsed_source.opening.location
 
     @cached_property
     def has_errors(self) -> bool:
         return self.parsed_source.has_errors
 
-    def errors(self):
+    def errors(self) -> ty.Generator[ParsingError, None, None]:
         yield from self.parsed_source.errors
 
 
@@ -976,7 +1070,7 @@ class Parser(ty.Generic[RBT, CT]):
     _root_block_class: type[RBT]
 
     #: source file text encoding.
-    _encoding = "utf-8"
+    _encoding: str = "utf-8"
 
     #: configuration passed to from_string functions.
     _config: CT
@@ -987,7 +1081,7 @@ class Parser(ty.Generic[RBT, CT]):
     #: parser algorithm to us. Must be a callable member of hashlib
     _hasher = hashlib.blake2b
 
-    def __init__(self, config: CT, prefer_resource_as_file=True):
+    def __init__(self, config: CT, prefer_resource_as_file: bool=True):
         self._config = config
         self._prefer_resource_as_file = prefer_resource_as_file
 
@@ -1021,9 +1115,9 @@ class Parser(ty.Generic[RBT, CT]):
             "for a resource."
         )
 
-    def parse_bytes(self, b: bytes, bos: BOS = None) -> ParsedSource[RBT, CT]:
+    def parse_bytes(self, b: bytes, bos: BOS[CT] | None= None) -> ParsedSource[RBT, CT]:
         if bos is None:
-            bos = BOS(Hash.from_bytes(self._hasher, b)).set_simple_position(0, 0, 0)
+            bos = BOS[CT](Hash.from_bytes(self._hasher, b)).set_simple_position(0, 0, 0)
 
         sic = self._statement_iterator_class(
             b.decode(self._encoding), self._delimiters, self._strip_spaces
@@ -1047,7 +1141,7 @@ class Parser(ty.Generic[RBT, CT]):
         with path.open(mode="rb") as fi:
             content = fi.read()
 
-        bos = BOF(
+        bos = BOF[CT](
             Hash.from_bytes(self._hasher, content), path, path.stat().st_mtime
         ).set_simple_position(0, 0, 0)
         return self.parse_bytes(content, bos)
@@ -1087,7 +1181,7 @@ class Parser(ty.Generic[RBT, CT]):
         with resources.files(package).joinpath(resource_name).open("rb") as fi:
             content = fi.read()
 
-        bos = BOR(
+        bos = BOR[CT](
             Hash.from_bytes(self._hasher, content), package, resource_name
         ).set_simple_position(0, 0, 0)
 
@@ -1099,7 +1193,7 @@ class Parser(ty.Generic[RBT, CT]):
 ##########
 
 
-class IncludeStatement(ParsedStatement):
+class IncludeStatement(ty.Generic[CT], ParsedStatement[CT]):
     """ "Include statements allow to merge files."""
 
     @property
@@ -1110,9 +1204,10 @@ class IncludeStatement(ParsedStatement):
 
 
 class ParsedProject(
-    ty.Dict[
-        ty.Optional[ty.Tuple[StrictLocationT, str]],
-        ParsedSource,
+    ty.Generic[RBT, CT],
+    dict[
+        tuple[StrictLocationT, str] | None,
+        ParsedSource[RBT, CT],
     ]
 ):
     """Collection of files, independent or connected via IncludeStatement.
@@ -1127,11 +1222,11 @@ class ParsedProject(
     def has_errors(self) -> bool:
         return any(el.has_errors for el in self.values())
 
-    def errors(self):
+    def errors(self) -> ty.Generator[ParsingError, None, None]:
         for el in self.values():
             yield from el.errors()
 
-    def _iter_statements(self, items, seen, include_only_once):
+    def _iter_statements(self, items: ty.Iterable[tuple[Any, Any]], seen: set[Any], include_only_once: bool)-> ty.Generator[ParsedStatement[CT], None, None]:
         """Iter all definitions in the order they appear,
         going into the included files.
         """
@@ -1148,7 +1243,7 @@ class ParsedProject(
                 else:
                     yield parsed_statement
 
-    def iter_statements(self, include_only_once=True):
+    def iter_statements(self, include_only_once: bool=True) -> ty.Generator[ParsedStatement[CT], None, None]:
         """Iter all definitions in the order they appear,
         going into the included files.
 
@@ -1159,7 +1254,7 @@ class ParsedProject(
         """
         yield from self._iter_statements([(None, self[None])], set(), include_only_once)
 
-    def _iter_blocks(self, items, seen, include_only_once):
+    def _iter_blocks(self, items: ty.Iterable[tuple[Any, Any]], seen: set[Any], include_only_once: bool) -> ty.Generator[ParsedStatement[CT], None, None]:
         """Iter all definitions in the order they appear,
         going into the included files.
         """
@@ -1176,7 +1271,7 @@ class ParsedProject(
                 else:
                     yield parsed_statement
 
-    def iter_blocks(self, include_only_once=True):
+    def iter_blocks(self, include_only_once: bool=True) -> ty.Generator[ParsedStatement[CT], None, None]:
         """Iter all definitions in the order they appear,
         going into the included files.
 
@@ -1206,7 +1301,7 @@ def default_locator(source_location: StrictLocationT, target: str) -> StrictLoca
             )
 
         tmp = (current_path / target_path).resolve()
-        if not is_relative_to(tmp, current_path):
+        if not tmp.is_relative_to(current_path):
             raise ValueError(
                 f"Cannot refer to locations above the current location ({source_location}, {target})"
             )
@@ -1224,17 +1319,79 @@ def default_locator(source_location: StrictLocationT, target: str) -> StrictLoca
     )
 
 
-DefinitionT = ty.Union[ty.Type[Block], ty.Type[ParsedStatement]]
+DefinitionT : TypeAlias= type[Block[Any, Any, Any, Any]] | type[ParsedStatement[Any]]
 
-SpecT = ty.Union[
-    ty.Type[Parser],
-    DefinitionT,
-    ty.Iterable[DefinitionT],
-    ty.Type[RootBlock],
-]
+SpecT : TypeAlias = type[Parser[Any, Any]] | DefinitionT | ty.Iterable[DefinitionT] | ty.Type[RootBlock[Any, Any]]
 
 
-def build_parser_class(spec: SpecT, *, strip_spaces: bool = True, delimiters=None):
+TTT = ty.TypeVar("TTT", bound=DefinitionT | ty.Iterable[DefinitionT])
+
+@ty.overload
+def build_root_block_class(spec: ParsedStatement[CT]) -> RootBlock[ParsedStatement[CT], CT]:
+    ...
+
+@ty.overload
+def build_root_block_class(spec: ty.Iterable[ParsedStatement[CT]]) -> RootBlock[ParsedStatement[CT], CT]:
+    ...
+
+
+def build_root_block_class(spec):
+    if isinstance(spec, (tuple, list)):
+        for el in spec:
+            if not issubclass(el, (Block, ParsedStatement)):
+                raise TypeError(
+                    "Elements in root_block_class must be of type Block or ParsedStatement, "
+                    f"not {el}"
+                )
+
+        @dataclass(frozen=True)
+        class CustomRootBlock(RootBlock[BPST, CT]):
+            pass
+
+        CustomRootBlock.__annotations__["body"] = Multi[ty.Union[spec]]
+
+    elif isinstance(spec, type) and issubclass(spec, RootBlock):
+
+        CustomRootBlock = spec
+
+    elif isinstance(spec, type) and issubclass(spec, (Block, ParsedStatement)):
+
+        @dataclass(frozen=True)
+        class CustomRootBlock(RootBlock[BPST, CT]):
+            pass
+
+        CustomRootBlock.__annotations__["body"] = Multi[spec]
+
+    else:
+        raise TypeError(
+            "`spec` must be of type RootBlock or tuple of type Block or ParsedStatement, "
+            f"not {type(spec)}"
+        )
+
+    return CustomRootBlock
+
+@ty.overload
+def build_parser_class(spec: type[Block[OPST, BPST, CPST, CT]], *, strip_spaces: bool, delimiters: DelimiterDictT | None)-> type[Parser[RootBlock[Block[OPST, BPST, CPST, CT], CT], CT]]:
+    pass
+
+@ty.overload
+def build_parser_class(spec: type[ParsedStatement[CT]], *, strip_spaces: bool, delimiters: DelimiterDictT | None)-> type[Parser[RootBlock[ParsedStatement[CT], CT], CT]]:
+    pass
+
+@ty.overload
+def build_parser_class(spec: type[ty.Iterable[Block[OPST, BPST, CPST, CT]]], *, strip_spaces: bool, delimiters: DelimiterDictT | None)-> type[Parser[RootBlock[Block[OPST, BPST, CPST, CT], CT], CT]]:
+    pass
+
+@ty.overload
+def build_parser_class(spec: type[ty.Iterable[ParsedStatement[CT]]], *, strip_spaces: bool, delimiters: DelimiterDictT | None)-> type[Parser[RootBlock[ParsedStatement[CT], CT], CT]]:
+    pass
+
+@ty.overload
+def build_parser_class(spec: type[RootBlock[BPST, CT]], *, strip_spaces: bool, delimiters: DelimiterDictT | None)-> type[Parser[RootBlock[BPST, CT], CT]]:
+    pass
+
+
+def build_parser_class(spec, *, strip_spaces, delimiters):
     """Build a custom parser class.
 
     Parameters
@@ -1243,7 +1400,7 @@ def build_parser_class(spec: SpecT, *, strip_spaces: bool = True, delimiters=Non
         specification of the content to parse. Can be one of the following things:
         - Parser class.
         - Block or ParsedStatement derived class.
-        - Iterable of Block or ParsedStatement derived class.
+        - ty.Iterable of Block or ParsedStatement derived class.
         - RootBlock derived class.
     strip_spaces : bool
         if True, spaces will be stripped for each statement before calling
@@ -1268,59 +1425,121 @@ def build_parser_class(spec: SpecT, *, strip_spaces: bool = True, delimiters=Non
     if isinstance(spec, type) and issubclass(spec, Parser):
         CustomParser = spec
     else:
-        if isinstance(spec, (tuple, list)):
+        
+        CustomRootBlock = build_root_block_class(spec)
 
-            for el in spec:
-                if not issubclass(el, (Block, ParsedStatement)):
-                    raise TypeError(
-                        "Elements in root_block_class must be of type Block or ParsedStatement, "
-                        f"not {el}"
-                    )
+        class CustomParser(Parser[CustomRootBlock[BPST, CT], CT]):
 
-            @dataclass(frozen=True)
-            class CustomRootBlock(RootBlock):
-                pass
-
-            CustomRootBlock.__annotations__["body"] = Multi[ty.Union[spec]]
-
-        elif isinstance(spec, type) and issubclass(spec, RootBlock):
-
-            CustomRootBlock = spec
-
-        elif isinstance(spec, type) and issubclass(spec, (Block, ParsedStatement)):
-
-            @dataclass(frozen=True)
-            class CustomRootBlock(RootBlock):
-                pass
-
-            CustomRootBlock.__annotations__["body"] = Multi[spec]
-
-        else:
-            raise TypeError(
-                "`spec` must be of type RootBlock or tuple of type Block or ParsedStatement, "
-                f"not {type(spec)}"
-            )
-
-        class CustomParser(Parser):
-
-            _delimiters = delimiters
-            _root_block_class = CustomRootBlock
-            _strip_spaces = strip_spaces
+            _delimiters: DelimiterDictT = delimiters
+            _root_block_class = CustomRootBlock[BPST, CT]
+            _strip_spaces: bool = strip_spaces
 
     return CustomParser
 
 
+
+
+@ty.overload
 def parse(
     entry_point: SourceLocationT,
-    spec: SpecT,
+    spec: Parser[RBT, CT],
+    config: CT,
+    *,
+    strip_spaces: bool,
+    delimiters: DelimiterDictT | None,
+    locator: ty.Callable[[StrictLocationT, str], StrictLocationT],
+    prefer_resource_as_file: bool,
+    **extra_parser_kwargs: Any,
+) -> ParsedProject[RBT, CT]:
+    ...
+
+
+@ty.overload
+def parse(
+    entry_point: SourceLocationT,
+    spec: type[RootBlock[BPST, CT]],
+    config: CT,
+    *,
+    strip_spaces: bool,
+    delimiters: DelimiterDictT | None,
+    locator: ty.Callable[[StrictLocationT, str], StrictLocationT],
+    prefer_resource_as_file: bool,
+    **extra_parser_kwargs: Any,
+) -> ParsedProject[RootBlock[BPST, CT], CT]:
+    ...
+
+
+@ty.overload
+def parse(
+    entry_point: SourceLocationT,
+    spec: type[Block[OPST, BPST, CPST, CT]],
+    config: CT,
+    *,
+    strip_spaces: bool,
+    delimiters: DelimiterDictT | None,
+    locator: ty.Callable[[StrictLocationT, str], StrictLocationT],
+    prefer_resource_as_file: bool,
+    **extra_parser_kwargs: Any,
+) -> ParsedProject[RootBlock[BPST, CT], CT]:
+    ...
+
+
+@ty.overload
+def parse(
+    entry_point: SourceLocationT,
+    spec: ty.Iterable[type[Block[OPST, BPST, CPST, CT]]],
+    config: CT,
+    *,
+    strip_spaces: bool,
+    delimiters: DelimiterDictT | None,
+    locator: ty.Callable[[StrictLocationT, str], StrictLocationT],
+    prefer_resource_as_file: bool,
+    **extra_parser_kwargs: Any,
+) -> ParsedProject[RootBlock[BPST, CT], CT]:
+    ...
+
+
+# @ty.overload
+# def parse(
+#     entry_point: SourceLocationT,
+#     spec: type[ParsedStatement[CT]],
+#     config: CT,
+#     *,
+#     strip_spaces: bool,
+#     delimiters: DelimiterDictT | None,
+#     locator: ty.Callable[[StrictLocationT, str], StrictLocationT],
+#     prefer_resource_as_file: bool,
+#     **extra_parser_kwargs: Any,
+# ) -> ParsedProject[RootBlock[BPST, CT], CT]:
+#     ...
+
+
+# @ty.overload
+# def parse(
+#     entry_point: SourceLocationT,
+#     spec: ty.Iterable[type[Block[OPST, BPST, CPST, CT]]],
+#     config: CT,
+#     *,
+#     strip_spaces: bool,
+#     delimiters: DelimiterDictT | None,
+#     locator: ty.Callable[[StrictLocationT, str], StrictLocationT],
+#     prefer_resource_as_file: bool,
+#     **extra_parser_kwargs: Any,
+# ) -> ParsedProject[RootBlock[BPST, CT], CT]:
+#     ...
+
+
+def parse(
+    entry_point,
+    spec,
     config=None,
     *,
-    strip_spaces: bool = True,
+    strip_spaces=True,
     delimiters=None,
-    locator: ty.Callable[[StrictLocationT, str], StrictLocationT] = default_locator,
-    prefer_resource_as_file: bool = True,
+    locator=default_locator,
+    prefer_resource_as_file=True,
     **extra_parser_kwargs,
-) -> ParsedProject:
+):
     """Parse sources into a ParsedProject dictionary.
 
     Parameters
@@ -1331,7 +1550,7 @@ def parse(
         specification of the content to parse. Can be one of the following things:
         - Parser class.
         - Block or ParsedStatement derived class.
-        - Iterable of Block or ParsedStatement derived class.
+        - ty.Iterable of Block or ParsedStatement derived class.
         - RootBlock derived class.
     config
         a configuration object that will be passed to `from_string_and_config`
@@ -1361,9 +1580,12 @@ def parse(
          encountering this delimiter.
     """
 
-    CustomParser = build_parser_class(
-        spec, strip_spaces=strip_spaces, delimiters=delimiters
-    )
+    if isinstance(spec, type) and issubclass(spec, Parser):
+        CustomParser = spec
+    else:
+        CustomParser = build_parser_class(
+            spec, strip_spaces=strip_spaces, delimiters=delimiters
+        )
     parser = CustomParser(
         config, prefer_resource_as_file=prefer_resource_as_file, **extra_parser_kwargs
     )
@@ -1407,12 +1629,12 @@ def parse(
 def parse_bytes(
     content: bytes,
     spec: SpecT,
-    config=None,
+    config: CT | None=None,
     *,
     strip_spaces: bool = True,
     delimiters=None,
     **extra_parser_kwargs,
-) -> ParsedProject:
+) -> ParsedProject[RBT, CT]:
     """Parse sources into a ParsedProject dictionary.
 
     Parameters
@@ -1423,7 +1645,7 @@ def parse_bytes(
         specification of the content to parse. Can be one of the following things:
         - Parser class.
         - Block or ParsedStatement derived class.
-        - Iterable of Block or ParsedStatement derived class.
+        - ty.Iterable of Block or ParsedStatement derived class.
         - RootBlock derived class.
     config
         a configuration object that will be passed to `from_string_and_config`

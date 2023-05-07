@@ -258,7 +258,7 @@ def test_include_file(tmp_path):
     tmp_file1.write_bytes(content1)
     tmp_file2.write_bytes(content2)
 
-    pp = fp.parse(tmp_file1, (Include, Comment, EqualFloat))
+    pp = fp.parse(tmp_file1, (Include, Comment, EqualFloat), None)
 
     assert None in pp
     assert (tmp_file1, "bla2.txt") in pp
