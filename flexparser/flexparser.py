@@ -811,7 +811,9 @@ class Block(ty.Generic[OPST, BPST, CPST, CT], GenericInfo):
                 yield el
         yield self.closing
 
-    def iter_blocks(self) -> ty.Generator[ParsedResult[Union[OPST, BPST, CPST]], None, None]:
+    def iter_blocks(
+        self,
+    ) -> ty.Generator[ParsedResult[Union[OPST, BPST, CPST]], None, None]:
         raise RuntimeError("Is this used?")
         yield self.opening
         yield from self.body
@@ -1432,14 +1434,17 @@ def _build_parser_class_root_block(
 
 @no_type_check
 def build_parser_class(
-    spec: Union[type[
-        Union[
-            Parser[RBT, CT],
-            RootBlock[BPST, CT],
-            Block[OPST, BPST, CPST, CT],
-            ParsedStatement[CT],
-        ]
-    ], ty.Iterable[type[ParsedStatement[CT]]]],
+    spec: Union[
+        type[
+            Union[
+                Parser[RBT, CT],
+                RootBlock[BPST, CT],
+                Block[OPST, BPST, CPST, CT],
+                ParsedStatement[CT],
+            ]
+        ],
+        ty.Iterable[type[ParsedStatement[CT]]],
+    ],
     config: CT = None,
     strip_spaces: bool = True,
     delimiters: Optional[DelimiterDictT] = None,
@@ -1519,15 +1524,17 @@ def build_parser_class(
 @no_type_check
 def parse(
     entry_point: SourceLocationT,
-    spec: Union[type[
-        Union[
-            Parser[RBT, CT],
-            RootBlock[BPST, CT],
-            Block[OPST, BPST, CPST, CT],
-            ParsedStatement[CT],
-        ]
+    spec: Union[
+        type[
+            Union[
+                Parser[RBT, CT],
+                RootBlock[BPST, CT],
+                Block[OPST, BPST, CPST, CT],
+                ParsedStatement[CT],
+            ]
+        ],
+        ty.Iterable[type[ParsedStatement[CT]]],
     ],
-    ty.Iterable[type[ParsedStatement[CT]]]],
     config: CT = None,
     *,
     strip_spaces: bool = True,
