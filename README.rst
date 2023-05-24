@@ -214,13 +214,11 @@ This construct allows you to group
 
             return None
 
-    AssigmentBlock = fp.Block.build(
-        Begin,
-        (Assigment, ),
-        End,
-    )
+    class AssigmentBlock(fp.Block[Begin, Assigment, End]):
+        pass
 
     parsed = fp.parse("source.txt", (AssigmentBlock, Equality))
+
 
 Run the code:
 
@@ -395,15 +393,11 @@ Explicit Block classes
 
 .. code-block:: python
 
-    class AssigmentBlock:
+    class AssigmentBlock(fp.Block[Begin, Assigment, End]):
+        pass
 
-        opening: fp.Single[Begin]
-        body: fp.Multi[Assigment]
-        closing: fp.Single[End]
-
-    class EntryBlock(fp.RootBlock):
-
-        body: fp.Multi[typing.Union[AssigmentBlock, Equality]]
+    class EntryBlock(fp.RootBlock[Union[AssigmentBlock, Equality]]):
+        pass
 
     parsed = fp.parse("source.txt", EntryBlock)
 

@@ -1,5 +1,19 @@
-import typing
+
+import sys
 from dataclasses import dataclass
+
+from typing import Union
+
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias # noqa
+else:
+    from typing_extensions import TypeAlias # noqa
+
+
+if sys.version_info >= (3, 11):
+    from typing import Self # noqa
+else:
+    from typing_extensions import Self # noqa
 
 from flexparser import flexparser as fp
 
@@ -17,43 +31,44 @@ class CannotParseToFloat(fp.ParsingError):
 
 
 @dataclass(frozen=True)
-class Open(fp.ParsedStatement):
+class Open(fp.ParsedStatement[None]):
+
     @classmethod
-    def from_string(cls, s: str):
+    def from_string(cls, s: str) -> fp.NullableParsedResult[Self]:
         if s == "@begin":
             return cls()
         return None
 
 
 @dataclass(frozen=True)
-class Close(fp.ParsedStatement):
+class Close(fp.ParsedStatement[None]):
     @classmethod
-    def from_string(cls, s: str):
+    def from_string(cls, s: str) -> fp.NullableParsedResult[Self]:
         if s == "@end":
             return cls()
         return None
 
 
 @dataclass(frozen=True)
-class Comment(fp.ParsedStatement):
+class Comment(fp.ParsedStatement[None]):
 
     s: str
 
     @classmethod
-    def from_string(cls, s: str):
+    def from_string(cls, s: str) -> fp.NullableParsedResult[Self]:
         if s.startswith("#"):
             return cls(s)
         return None
 
 
 @dataclass(frozen=True)
-class EqualFloat(fp.ParsedStatement):
+class EqualFloat(fp.ParsedStatement[None]):
 
     a: str
     b: float
 
     @classmethod
-    def from_string(cls, s: str) -> fp.FromString["EqualFloat"]:
+    def from_string(cls, s: str) -> fp.NullableParsedResult[Self]:
         if "=" not in s:
             return None
 
@@ -72,28 +87,17 @@ class EqualFloat(fp.ParsedStatement):
         return cls(a, b)
 
 
-class MyBlock(fp.Block):
+class MyBlock(fp.Block[Open, Union[Comment, EqualFloat], Close, None]):
+    pass
 
-    opening: fp.Single[Open]
-    body: fp.Multi[typing.Union[Comment, EqualFloat]]
-    closing: fp.Single[Close]
+class MyRoot(fp.RootBlock[Union[Comment, EqualFloat], None]):
+    pass
 
+class MyParser(fp.Parser[MyRoot, None]):
+    pass
 
-class MyRoot(fp.RootBlock):
+class MyRootWithBlock(fp.RootBlock[Union[Comment, EqualFloat, MyBlock], None]):
+    pass
 
-    body: fp.Multi[typing.Union[Comment, EqualFloat]]
-
-
-class MyParser(fp.Parser):
-
-    _root_block_class = MyRoot
-
-
-class MyRootWithBlock(fp.RootBlock):
-
-    body: fp.Multi[typing.Union[Comment, EqualFloat, MyBlock]]
-
-
-class MyParserWithBlock(fp.Parser):
-
-    _root_block_class = MyRootWithBlock
+class MyParserWithBlock(fp.Parser[MyRootWithBlock, None]):
+    pass

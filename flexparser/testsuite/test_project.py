@@ -1,6 +1,7 @@
 import hashlib
 import pathlib
 from dataclasses import dataclass
+from typing import Union
 
 import pytest
 
@@ -237,7 +238,7 @@ def test_parse3(tmp_path, definition):
 
 def test_include_file(tmp_path):
     @dataclass(frozen=True)
-    class Include(fp.IncludeStatement):
+    class Include(fp.IncludeStatement[None]):
 
         value: str
 
@@ -257,7 +258,7 @@ def test_include_file(tmp_path):
     tmp_file2 = tmp_path / "bla2.txt"
     tmp_file1.write_bytes(content1)
     tmp_file2.write_bytes(content2)
-
+    
     pp = fp.parse(tmp_file1, (Include, Comment, EqualFloat), None)
 
     assert None in pp
@@ -288,7 +289,7 @@ def test_include_file(tmp_path):
 
 def test_resources(tmp_path):
     @dataclass(frozen=True)
-    class Include(fp.IncludeStatement):
+    class Include(fp.IncludeStatement[None]):
 
         value: str
 
