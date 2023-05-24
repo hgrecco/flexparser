@@ -4,7 +4,10 @@ flexparser Changelog
 0.2 (unreleased)
 ----------------
 
-- Nothing changed yet.
+- Typing related improvements
+- flexparser now requires Python 3.9+
+- Dropped class variables for types in favour of introspecting the
+  generic hierarchy.
 
 
 0.1 (2022-06-04)
