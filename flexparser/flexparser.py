@@ -141,7 +141,7 @@ class Statement:
     end_line: int = dataclasses.field(init=False, default=0)
     end_col: int = dataclasses.field(init=False, default=0)
 
-    raw: str | None = dataclasses.field(init=False, default=None)
+    raw: Optional[str] = dataclasses.field(init=False, default=None)
 
     @classmethod
     def from_statement(cls, statement: Statement) -> Self:
@@ -168,7 +168,7 @@ class Statement:
         return "%d,%d-%d,%d" % self.get_position()
 
     @property
-    def raw_strip(self) -> str | None:
+    def raw_strip(self) -> Optional[str]:
         if self.raw is None:
             return None
         return self.raw.strip()
@@ -811,7 +811,7 @@ class Block(ty.Generic[OPST, BPST, CPST, CT], GenericInfo):
                 yield el
         yield self.closing
 
-    def iter_blocks(self) -> ty.Generator[ParsedResult[OPST | BPST | CPST], None, None]:
+    def iter_blocks(self) -> ty.Generator[ParsedResult[Union[OPST, BPST, CPST]], None, None]:
         raise RuntimeError("Is this used?")
         yield self.opening
         yield from self.body
@@ -1158,7 +1158,7 @@ class Parser(ty.Generic[RBT, CT], GenericInfo):
         )
 
     def parse_bytes(
-        self, b: bytes, bos: BOS[CT] | None = None
+        self, b: bytes, bos: Optional[BOS[CT]] = None
     ) -> ParsedSource[RBT, CT]:
         if bos is None:
             bos = BOS[CT](Hash.from_bytes(self._hasher, b)).set_simple_position(0, 0, 0)
@@ -1248,7 +1248,7 @@ class IncludeStatement(ty.Generic[CT], ParsedStatement[CT]):
 class ParsedProject(
     ty.Generic[RBT, CT],
     dict[
-        tuple[StrictLocationT, str] | None,
+        Optional[tuple[StrictLocationT, str]],
         ParsedSource[RBT, CT],
     ],
 ):
@@ -1404,7 +1404,7 @@ def _build_root_block_class_block(
 
 @no_type_check
 def _build_root_block_class_parsed_statement_it(
-    spec: tuple[type[ParsedStatement[CT] | Block[OPST, BPST, CPST, CT]]],
+    spec: tuple[type[Union[ParsedStatement[CT], Block[OPST, BPST, CPST, CT]]]],
     config: type[CT],
 ) -> type[RootBlock[ParsedStatement[CT], CT]]:
     """Build root block class from iterable ParsedStatement."""
@@ -1421,7 +1421,7 @@ def _build_parser_class_root_block(
     spec: type[RootBlock[BPST, CT]],
     *,
     strip_spaces: bool = True,
-    delimiters: DelimiterDictT | None = None,
+    delimiters: Optional[DelimiterDictT] = None,
 ) -> type[Parser[RootBlock[BPST, CT], CT]]:
     class CustomParser(Parser[spec, spec.specialization()[CT]]):  # type: ignore
         _delimiters: DelimiterDictT = delimiters or SPLIT_EOL
@@ -1432,15 +1432,14 @@ def _build_parser_class_root_block(
 
 @no_type_check
 def build_parser_class(
-    spec: type[
+    spec: Union[type[
         Union[
             Parser[RBT, CT],
             RootBlock[BPST, CT],
             Block[OPST, BPST, CPST, CT],
             ParsedStatement[CT],
         ]
-    ]
-    | ty.Iterable[type[ParsedStatement[CT]]],
+    ], ty.Iterable[type[ParsedStatement[CT]]]],
     config: CT = None,
     strip_spaces: bool = True,
     delimiters: Optional[DelimiterDictT] = None,
@@ -1520,15 +1519,15 @@ def build_parser_class(
 @no_type_check
 def parse(
     entry_point: SourceLocationT,
-    spec: type[
+    spec: Union[type[
         Union[
             Parser[RBT, CT],
             RootBlock[BPST, CT],
             Block[OPST, BPST, CPST, CT],
             ParsedStatement[CT],
         ]
-    ]
-    | ty.Iterable[type[ParsedStatement[CT]]],
+    ],
+    ty.Iterable[type[ParsedStatement[CT]]]],
     config: CT = None,
     *,
     strip_spaces: bool = True,
