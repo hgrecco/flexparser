@@ -33,7 +33,6 @@ import flexparser.flexparser as fp
     ],
 )
 def test_split_single_line(delimiters, content, expected):
-
     out = tuple(fp.Spliter(content, delimiters))
     assert out == expected
 
@@ -150,7 +149,6 @@ def test_split_single_line(delimiters, content, expected):
     ],
 )
 def test_split_multi_line(delimiters, content, expected):
-
     out = tuple(fp.Spliter(content, delimiters))
     assert out == expected
 

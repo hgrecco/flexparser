@@ -4,7 +4,7 @@ import numbers
 import typing as ty
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Callable, Optional
+from typing import Callable
 
 from flexparser import flexparser as fp
 

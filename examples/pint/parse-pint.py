@@ -11,7 +11,6 @@ from flexparser import flexparser as fp
 
 @dataclass(frozen=True)
 class ImportDefinition(fp.IncludeStatement):
-
     value: str
 
     @property
@@ -27,7 +26,6 @@ class ImportDefinition(fp.IncludeStatement):
 
 @dataclass(frozen=True)
 class EntryBlock(fp.RootBlock):
-
     body: fp.Multi[
         ty.Union[
             common.Comment,

@@ -4,7 +4,7 @@ import numbers
 import re
 import typing as ty
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable
 
 from flexparser import flexparser as fp
 
@@ -22,7 +22,6 @@ class ParserHelper:
 
 @dataclass(frozen=True)
 class _Relation:
-
     _varname_re = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
     src: UnitsContainer

@@ -1,38 +1,34 @@
-
 import sys
 from dataclasses import dataclass
 
 from typing import Union
 
 if sys.version_info >= (3, 10):
-    from typing import TypeAlias # noqa
+    from typing import TypeAlias  # noqa
 else:
-    from typing_extensions import TypeAlias # noqa
+    from typing_extensions import TypeAlias  # noqa
 
 
 if sys.version_info >= (3, 11):
-    from typing import Self # noqa
+    from typing import Self  # noqa
 else:
-    from typing_extensions import Self # noqa
+    from typing_extensions import Self  # noqa
 
 from flexparser import flexparser as fp
 
 
 @dataclass(frozen=True)
 class NotAValidIdentifier(fp.ParsingError):
-
     value: str
 
 
 @dataclass(frozen=True)
 class CannotParseToFloat(fp.ParsingError):
-
     value: str
 
 
 @dataclass(frozen=True)
 class Open(fp.ParsedStatement[None]):
-
     @classmethod
     def from_string(cls, s: str) -> fp.NullableParsedResult[Self]:
         if s == "@begin":
@@ -51,7 +47,6 @@ class Close(fp.ParsedStatement[None]):
 
 @dataclass(frozen=True)
 class Comment(fp.ParsedStatement[None]):
-
     s: str
 
     @classmethod
@@ -63,7 +58,6 @@ class Comment(fp.ParsedStatement[None]):
 
 @dataclass(frozen=True)
 class EqualFloat(fp.ParsedStatement[None]):
-
     a: str
     b: float
 
@@ -90,14 +84,18 @@ class EqualFloat(fp.ParsedStatement[None]):
 class MyBlock(fp.Block[Open, Union[Comment, EqualFloat], Close, None]):
     pass
 
+
 class MyRoot(fp.RootBlock[Union[Comment, EqualFloat], None]):
     pass
+
 
 class MyParser(fp.Parser[MyRoot, None]):
     pass
 
+
 class MyRootWithBlock(fp.RootBlock[Union[Comment, EqualFloat, MyBlock], None]):
     pass
+
 
 class MyParserWithBlock(fp.Parser[MyRootWithBlock, None]):
     pass

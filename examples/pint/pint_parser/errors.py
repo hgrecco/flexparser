@@ -8,12 +8,10 @@ from flexparser import flexparser as fp
 
 @dataclass(frozen=True)
 class DefinitionSyntaxError(fp.ParsingError):
-
     msg: str
     base_exception: ty.Optional[Exception] = None
 
 
 @dataclass(frozen=True)
 class UnexpectedScaleInContainer(fp.ParsingError):
-
     msg: str

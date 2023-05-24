@@ -11,7 +11,6 @@ from . import common, errors
 
 @dataclass(frozen=True)
 class Rule(fp.ParsedStatement):
-
     new_unit_name: str
     old_unit_name: ty.Optional[str] = None
 

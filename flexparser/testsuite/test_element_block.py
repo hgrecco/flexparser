@@ -18,29 +18,42 @@ from flexparser.testsuite.common import (
 class MyBlock2(fp.Block[Open, Union[Comment, EqualFloat], Close, None]):
     pass
 
+
 class MyRoot2(fp.RootBlock[Union[Comment, EqualFloat], None]):
     pass
+
 
 FIRST_NUMBER = 1
 
 
 def test_block_classes():
-    assert tuple(MyBlock.opening_classes()) == (Open, )
-    assert tuple(MyBlock.body_classes()) == (Comment, EqualFloat, )
-    assert tuple(MyBlock.closing_classes()) == (Close, )
+    assert tuple(MyBlock.opening_classes()) == (Open,)
+    assert tuple(MyBlock.body_classes()) == (
+        Comment,
+        EqualFloat,
+    )
+    assert tuple(MyBlock.closing_classes()) == (Close,)
 
     assert tuple(MyRoot.opening_classes()) == ()
-    assert tuple(MyRoot.body_classes()) == (Comment, EqualFloat, )
+    assert tuple(MyRoot.body_classes()) == (
+        Comment,
+        EqualFloat,
+    )
     assert tuple(MyRoot.closing_classes()) == ()
 
-    assert tuple(MyBlock2.opening_classes()) == (Open, )
-    assert tuple(MyBlock2.body_classes()) == (Comment, EqualFloat, )
-    assert tuple(MyBlock2.closing_classes()) == (Close, )
+    assert tuple(MyBlock2.opening_classes()) == (Open,)
+    assert tuple(MyBlock2.body_classes()) == (
+        Comment,
+        EqualFloat,
+    )
+    assert tuple(MyBlock2.closing_classes()) == (Close,)
 
     assert tuple(MyRoot2.opening_classes()) == ()
-    assert tuple(MyRoot2.body_classes()) == (Comment, EqualFloat, )
+    assert tuple(MyRoot2.body_classes()) == (
+        Comment,
+        EqualFloat,
+    )
     assert tuple(MyRoot2.closing_classes()) == ()
-
 
 
 def test_formatting():
