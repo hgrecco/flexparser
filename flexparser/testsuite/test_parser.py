@@ -111,7 +111,7 @@ def test_unfinished_block(tmp_path):
     assert psf.parsed_source.opening.mtime == tmp_file.stat().st_mtime
     assert psf.parsed_source.opening.path == tmp_file
     assert tuple(psf.errors()) == (
-        fp.UnexpectedEOF().set_simple_position(FIRST_NUMBER + 3, 0, 0),
+        fp.UnexpectedEOS().set_simple_position(FIRST_NUMBER + 3, 0, 0),
     )
     assert psf.location == tmp_file
 
@@ -121,7 +121,7 @@ def test_unfinished_block(tmp_path):
     body = tuple(mb.body)
     assert len(body) == 1
     assert isinstance(body[0], MyBlock)
-    assert body[0].closing == fp.UnexpectedEOF().set_simple_position(
+    assert body[0].closing == fp.UnexpectedEOS().set_simple_position(
         FIRST_NUMBER + 3, 0, 0
     )
     assert body[0].body == (

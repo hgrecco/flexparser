@@ -182,7 +182,7 @@ def test_unfinished_block(klass):
     assert mb.opening == Open().set_simple_position(FIRST_NUMBER + 0, 0, 6).set_raw(
         "@begin"
     )
-    assert mb.closing == fp.UnexpectedEOF().set_simple_position(FIRST_NUMBER + 3, 0, 0)
+    assert mb.closing == fp.UnexpectedEOS().set_simple_position(FIRST_NUMBER + 3, 0, 0)
     body = tuple(mb.body)
     assert len(body) == 2
     assert mb.body == (

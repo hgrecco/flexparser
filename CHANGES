@@ -4,6 +4,8 @@ flexparser Changelog
 0.2 (unreleased)
 ----------------
 
+
+- UnexpectedEOF has been renamed UnexpectedEOS.
 - Typing related improvements
 - flexparser now requires Python 3.9+
 - Dropped class variables for types in favour of introspecting the

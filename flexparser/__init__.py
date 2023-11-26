@@ -34,10 +34,13 @@ from .flexparser import (
     ParsingError,
     RootBlock,
     StatementIterator,
-    UnexpectedEOF,
+    UnexpectedEOS,
     UnknownStatement,
     parse,
 )
+
+# Deprecate in 0.3
+UnexpectedEOF = UnexpectedEOS
 
 __all__ = (
     "__version__",
@@ -51,6 +54,7 @@ __all__ = (
     "RootBlock",
     "StatementIterator",
     "UnexpectedEOF",
+    "UnexpectedEOS",
     "UnknownStatement",
     "parse",
 )

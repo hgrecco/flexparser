@@ -208,7 +208,7 @@ class ParsingError(Statement, Exception):
 class UnknownStatement(ParsingError):
     """A string statement could not bee parsed."""
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Could not parse '{self.raw}' ({self.format_position})"
 
 
@@ -223,7 +223,7 @@ class UnhandledParsingError(ParsingError):
 
 
 @dataclass(frozen=True)
-class UnexpectedEOF(ParsingError):
+class UnexpectedEOS(ParsingError):
     """End of file was found within an open block."""
 
 
@@ -279,7 +279,7 @@ class Hash:
 
 def _yield_types(
     obj: type,
-    valid_subclasses: tuple[type] = (object,),
+    valid_subclasses: tuple[type, ...] = (object,),
     recurse_origin: tuple[Any, ...] = (tuple, list, Union),
 ) -> ty.Generator[type, None, None]:
     """Recursively transverse type annotation if the
@@ -362,7 +362,7 @@ _EOLs_set = set(DO_NOT_SPLIT_EOL.keys())
 
 
 @functools.lru_cache
-def _build_delimiter_pattern(delimiters: tuple[str]) -> re.Pattern[str]:
+def _build_delimiter_pattern(delimiters: tuple[str, ...]) -> re.Pattern[str]:
     """Compile a tuple of delimiters into a regex expression with a capture group
     around the delimiter.
     """
@@ -767,9 +767,12 @@ class Block(ty.Generic[OPST, BPST, CPST, CT], GenericInfo):
 
     opening: ParsedResult[OPST]
     body: tuple[ParsedResult[BPST], ...]
-    closing: ParsedResult[CPST]
+    closing: Union[ParsedResult[CPST], EOS[CT]]
 
     delimiters: DelimiterDictT = dataclasses.field(default_factory=dict, init=False)
+
+    def is_closed(self) -> bool:
+        return not isinstance(self.closing, EOS)
 
     @property
     def is_position_set(self) -> bool:
@@ -802,7 +805,9 @@ class Block(ty.Generic[OPST, BPST, CPST, CT], GenericInfo):
 
     def __iter__(
         self,
-    ) -> ty.Generator[ParsedResult[Union[OPST, BPST, CPST]], None, None]:
+    ) -> ty.Generator[
+        ParsedResult[Union[OPST, BPST, Union[CPST, EOS[CT]]]], None, None
+    ]:
         yield self.opening
         for el in self.body:
             if isinstance(el, Block):
@@ -924,7 +929,7 @@ class Block(ty.Generic[OPST, BPST, CPST, CT], GenericInfo):
         cls, opening: OPST, statement_iterator: StatementIterator, config: CT
     ) -> Self:
         body: list[ParsedResult[BPST]] = []
-        closing: ty.Union[CPST, ParsingError, None, UnexpectedEOF, EOS[CT]] = None
+        closing: ty.Union[CPST, ParsingError, None] = None
         last_line = opening.end_line
         while closing is None:
             try:
@@ -935,10 +940,10 @@ class Block(ty.Generic[OPST, BPST, CPST, CT], GenericInfo):
                 body.append(el)
                 last_line = el.end_line
             except StopIteration:
-                closing = cls.on_stop_iteration(config)
-                closing.set_position(last_line + 1, 0, last_line + 1, 0)
+                unexpected_end = cls.on_stop_iteration(config)
+                unexpected_end.set_position(last_line + 1, 0, last_line + 1, 0)
+                return cls(opening, tuple(body), unexpected_end)
 
-        # assert not isinstance(closing, EOS)
         return cls(opening, tuple(body), closing)
 
     @classmethod
@@ -962,7 +967,7 @@ class Block(ty.Generic[OPST, BPST, CPST, CT], GenericInfo):
 
     @classmethod
     def on_stop_iteration(cls, config: CT) -> ParsedResult[EOS[CT]]:
-        return UnexpectedEOF()
+        return UnexpectedEOS()
 
 
 @dataclass(frozen=True)
@@ -1045,7 +1050,7 @@ class RootBlock(ty.Generic[BPST, CT], Block[BOS[CT], BPST, EOS[CT], CT]):
         return None
 
     @classmethod
-    def on_stop_iteration(cls, config: CT) -> EOS[CT]:
+    def on_stop_iteration(cls, config: CT) -> ParsedResult[EOS[CT]]:
         return EOS[CT]()
 
 
