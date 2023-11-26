@@ -1,0 +1,4 @@
+pytest
+pytest-mpl
+pytest-cov
+pytest-subtests

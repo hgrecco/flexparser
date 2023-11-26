@@ -3,7 +3,7 @@ name = "flexparser"
 authors = [
   {name="Hernan E. Grecco", email="hernan.grecco@gmail.com"}
 ]
-license = {text = "BSD"}
+license = {text = "BSD-3-Clause"}
 description = "Parsing made fun ... using typing."
 readme = "README.rst"
 maintainers = [
@@ -24,30 +24,24 @@ classifiers = [
     "Topic :: Utilities",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11"
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
 requires-python = ">=3.9"
-dynamic = ["version"] # Version is taken from git tags using setuptools_scm
-dependencies = [
-  "typing_extensions"
-]
+dynamic = ["dependencies", "optional-dependencies", "version"]
 
 [tool.setuptools.package-data]
 flexparser = ["py.typed"]
-
-[project.optional-dependencies]
-test = [
-    "pytest",
-    "pytest-mpl",
-    "pytest-cov",
-    "pytest-subtests"
-]
 
 [project.urls]
 Homepage = "https://github.com/hgrecco/flexparser"
 
 [tool.setuptools]
 packages = ["flexparser"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = "requirements.txt"}
+optional-dependencies.test = {file = "requirements.test.txt"}
 
 [build-system]
 requires = ["setuptools>=61", "wheel", "setuptools_scm[toml]>=3.4.3"]
