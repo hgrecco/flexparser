@@ -13,11 +13,10 @@
     :license: BSD, see LICENSE for more details.
 """
 
-
-import pkg_resources
+from importlib.metadata import version
 
 try:  # pragma: no cover
-    __version__ = pkg_resources.get_distribution("flexparser").version
+    __version__ = version("flexparser")
 except Exception:  # pragma: no cover
     # we seem to have a local copy not installed without setuptools
     # so the reported version will be unknown
