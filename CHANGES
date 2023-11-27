@@ -1,9 +1,8 @@
 flexparser Changelog
 ====================
 
-0.2 (unreleased)
+0.2 (2023-11-26)
 ----------------
-
 
 - UnexpectedEOF has been renamed UnexpectedEOS.
 - Typing related improvements
