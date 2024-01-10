@@ -1,7 +1,10 @@
 import hashlib
 import typing
 
+import pytest
+
 import flexparser.flexparser as fp
+from flexparser.flexparser import _HASH_ALGORITHMS
 
 
 def test_yield_types():
@@ -51,3 +54,16 @@ def test_hash_object():
     assert ho != hd
     assert ho != fp.Hash.from_bytes(hashlib.md5, content)
     assert ho == fp.Hash.from_bytes(hashlib.sha1, content)
+
+
+@pytest.mark.parametrize("algo_name", _HASH_ALGORITHMS)
+def test_hash_items(algo_name: str):
+    content = b"spam \n ham"
+    hasher = getattr(hashlib, algo_name)
+
+    ho = fp.Hash.from_bytes(hasher, content)
+    hd = hasher(content).hexdigest()
+    assert ho.algorithm_name == algo_name
+    assert ho.hexdigest == hd
+    assert ho != hd
+    assert ho == fp.Hash.from_bytes(hasher, content)

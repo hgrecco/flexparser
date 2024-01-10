@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import warnings
 import sys
 import collections
 import dataclasses
@@ -49,6 +50,29 @@ else:
 _LOGGER = logging.getLogger("flexparser")
 
 _SENTINEL = object()
+
+_HASH_ALGORITHMS = "blake2b", "blake2s", "sha3_512", "sha512", "sha1"
+
+for _algo_name in _HASH_ALGORITHMS:
+    try:
+        _DEFAULT_HASHER = getattr(hashlib, _algo_name)
+        _DEFAULT_HASHER(b"Always look at the bright side of life!").hexdigest()
+        break
+    except Exception:
+        pass
+else:
+    msg = (
+        f"Could not use any of the predefined hash algorithms {_HASH_ALGORITHMS}.\n"
+        "Your Python distribution's hashlib module is incomplete or not properly installed.\n"
+        "If you can't fix it, set the algorithm manually in the parser by:\n"
+        ">>> parser._hasher = hasher\n"
+    )
+
+    def _internal(*args, **kwargs):
+        raise ValueError(msg)
+
+    _DEFAULT_HASHER = _internal
+    warnings.warn(msg)
 
 
 class HasherProtocol(ty.Protocol):
@@ -1120,7 +1144,7 @@ class Parser(ty.Generic[RBT, CT], GenericInfo):
             bytes,
         ],
         HasherProtocol,
-    ] = hashlib.blake2b
+    ] = _DEFAULT_HASHER
 
     def __init__(self, config: CT, prefer_resource_as_file: bool = True):
         self._config = config
