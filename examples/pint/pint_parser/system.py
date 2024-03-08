@@ -84,8 +84,8 @@ class SystemDefinition(common.DirectiveBlock):
     If the new_unit_name and the old_unit_name, the later and the colon can be omitted.
     """
 
-    opening: fp.Single[BeginSystem]
-    body: fp.Multi[ty.Union[Rule, common.Comment]]
+    opening: BeginSystem
+    body: ty.Union[Rule, common.Comment]
 
     @property
     def unit_replacements(self) -> ty.Tuple[ty.Tuple[str, str], ...]:

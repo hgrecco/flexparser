@@ -35,7 +35,15 @@ from .flexparser import (
     StatementIterator,
     UnexpectedEOS,
     UnknownStatement,
+    NullableParsedResult,
     parse,
+    ParsedSource,
+    SPLIT_EOL,
+    BOF,
+    BOR,
+    EOS,
+    BOS,
+    parse_bytes,
 )
 
 # Deprecate in 0.3
@@ -56,4 +64,12 @@ __all__ = (
     "UnexpectedEOS",
     "UnknownStatement",
     "parse",
+    "ParsedSource",
+    "SPLIT_EOL",
+    "BOF",
+    "BOR",
+    "BOS",
+    "EOS",
+    "parse_bytes",
+    "NullableParsedResult",
 )
