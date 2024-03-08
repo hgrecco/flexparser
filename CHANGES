@@ -1,10 +1,11 @@
 flexparser Changelog
 ====================
 
-0.3 (unreleased)
-----------------
+0.2.1 (2024-03-08)
+-----------------
 
-- Nothing changed yet.
+- fix when FIPS mode enabled.
+  (Issue #7, thanks MattTheCuber)
 
 
 0.2 (2023-11-26)
