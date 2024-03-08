@@ -64,12 +64,10 @@ class GroupDefinition(common.DirectiveBlock):
 
     """
 
-    opening: fp.Single[BeginGroup]
-    body: fp.Multi[
-        ty.Tuple[
-            plain.UnitDefinition,
-            common.Comment,
-        ]
+    opening: BeginGroup
+    body: ty.Tuple[
+        plain.UnitDefinition,
+        common.Comment,
     ]
 
     @property

@@ -68,10 +68,10 @@ else:
         ">>> parser._hasher = hasher\n"
     )
 
-    def _internal(*args, **kwargs):
+    def _internal(*args: Any, **kwargs: Any):
         raise ValueError(msg)
 
-    _DEFAULT_HASHER = _internal
+    _DEFAULT_HASHER = _internal  # type: ignore
     warnings.warn(msg)
 
 
@@ -397,7 +397,7 @@ def _build_delimiter_pattern(delimiters: tuple[str, ...]) -> re.Pattern[str]:
 # Iterators
 ############
 
-DelimiterDictT = dict[str, tuple[DelimiterInclude, DelimiterAction]]
+DelimiterDictT = ty.Mapping[str, tuple[DelimiterInclude, DelimiterAction]]
 
 
 class Spliter:
@@ -1178,7 +1178,7 @@ class Parser(ty.Generic[RBT, CT], GenericInfo):
         if isinstance(source_location, str):
             return self.parse_file(pathlib.Path(source_location))
 
-        if isinstance(source_location, pathlib.Path):
+        if isinstance(source_location, pathlib.Path):  # type: ignore I still want to test it.
             return self.parse_file(source_location)
 
         raise TypeError(
@@ -1395,7 +1395,7 @@ def default_locator(source_location: StrictLocationT, target: str) -> StrictLoca
 
         return tmp.absolute()
 
-    elif isinstance(source_location, tuple) and len(source_location) == 2:
+    elif isinstance(source_location, tuple) and len(source_location) == 2:  # type: ignore I still want to test it.
         return source_location[0], target
 
     raise TypeError(
