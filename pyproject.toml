@@ -55,6 +55,9 @@ known-first-party= ["flexparser"]
 
 
 [tool.ruff]
+extend-select = [
+  "I",           # isort
+]
 ignore = [
   # whitespace before ':' - doesn't work well with black
   # "E203",
