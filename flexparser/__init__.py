@@ -12,6 +12,7 @@
     :copyright: 2022 by flexparser Authors, see AUTHORS for more details.
     :license: BSD, see LICENSE for more details.
 """
+from __future__ import annotations
 
 from importlib.metadata import version
 
@@ -24,10 +25,18 @@ except Exception:  # pragma: no cover
 
 
 from .flexparser import (
+    BOF,
+    BOR,
+    BOS,
+    EOS,
+    SPLIT_EOL,
     Block,
     DelimiterAction,
     DelimiterInclude,
     IncludeStatement,
+    NullableParsedResult,
+    ParsedProject,
+    ParsedSource,
     ParsedStatement,
     Parser,
     ParsingError,
@@ -35,15 +44,7 @@ from .flexparser import (
     StatementIterator,
     UnexpectedEOS,
     UnknownStatement,
-    NullableParsedResult,
     parse,
-    ParsedSource,
-    ParsedProject,
-    SPLIT_EOL,
-    BOF,
-    BOR,
-    EOS,
-    BOS,
     parse_bytes,
 )
 

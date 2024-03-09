@@ -1,6 +1,8 @@
-import pytest
+from __future__ import annotations
 
 from typing import Union
+
+import pytest
 
 from flexparser import flexparser as fp
 from flexparser.testsuite.common import (

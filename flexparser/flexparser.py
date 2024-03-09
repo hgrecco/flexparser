@@ -17,8 +17,6 @@
 
 from __future__ import annotations
 
-import warnings
-import sys
 import collections
 import dataclasses
 import enum
@@ -29,11 +27,13 @@ import inspect
 import logging
 import pathlib
 import re
+import sys
 import typing as ty
+import warnings
 from dataclasses import dataclass
 from functools import cached_property
 from importlib import resources
-from typing import Any, Union, Optional, no_type_check
+from typing import Any, Optional, Union, no_type_check
 
 if sys.version_info >= (3, 10):
     from typing import TypeAlias  # noqa
