@@ -214,7 +214,10 @@ This construct allows you to group
 
             return None
 
-    class AssigmentBlock(fp.Block[Begin, Assigment, End]):
+    class ParserConfig:
+        pass
+
+    class AssigmentBlock(fp.Block[Begin, Assigment, End, ParserConfig]):
         pass
 
     parsed = fp.parse("source.txt", (AssigmentBlock, Equality))
