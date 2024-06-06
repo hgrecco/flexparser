@@ -31,7 +31,7 @@ class PrefixDefinition(fp.ParsedStatement):
     @classmethod
     def from_string_and_config(
         cls, s: str, config: common.Config
-    ) -> fp.FromString[PrefixDefinition]:
+    ) -> fp.NullableParsedResult[PrefixDefinition]:
         if "=" not in s:
             return None
 
@@ -100,7 +100,7 @@ class UnitDefinition(fp.ParsedStatement):
     @classmethod
     def from_string_and_config(
         cls, s: str, config: common.Config
-    ) -> fp.FromString[UnitDefinition]:
+    ) -> fp.NullableParsedResult[UnitDefinition]:
         if "=" not in s:
             return None
 
@@ -204,7 +204,7 @@ class DimensionDefinition(fp.ParsedStatement):
         return False
 
     @classmethod
-    def from_string(cls, s: str) -> fp.FromString[DimensionDefinition]:
+    def from_string(cls, s: str) -> fp.NullableParsedResult[DimensionDefinition]:
         s = s.strip()
 
         if not (s.startswith("[") and "=" not in s):
@@ -239,7 +239,7 @@ class DerivedDimensionDefinition(fp.ParsedStatement):
     @classmethod
     def from_string_and_config(
         cls, s: str, config: common.Config
-    ) -> fp.FromString[DerivedDimensionDefinition]:
+    ) -> fp.NullableParsedResult[DerivedDimensionDefinition]:
         if not (s.startswith("[") and "=" in s):
             return None
 
@@ -285,7 +285,7 @@ class AliasDefinition(fp.ParsedStatement):
     aliases: ty.Tuple[str, ...]
 
     @classmethod
-    def from_string(cls, s: str) -> fp.FromString[AliasDefinition]:
+    def from_string(cls, s: str) -> fp.NullableParsedResult[AliasDefinition]:
         if not s.startswith("@alias "):
             return None
         name, *aliases = s[len("@alias ") :].split("=")

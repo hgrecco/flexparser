@@ -15,7 +15,7 @@ class Rule(fp.ParsedStatement):
     old_unit_name: ty.Optional[str] = None
 
     @classmethod
-    def from_string(cls, s: str) -> fp.FromString[Rule]:
+    def from_string(cls, s: str) -> fp.NullableParsedResult[Rule]:
         if ":" not in s:
             return cls(s.strip())
         parts = [p.strip() for p in s.split(":")]
@@ -40,7 +40,7 @@ class BeginSystem(fp.ParsedStatement):
     using_group_names: ty.Tuple[str, ...]
 
     @classmethod
-    def from_string(cls, s: str) -> fp.FromString[BeginSystem]:
+    def from_string(cls, s: str) -> fp.NullableParsedResult[BeginSystem]:
         if not s.startswith("@system"):
             return None
 
@@ -83,9 +83,6 @@ class SystemDefinition(common.DirectiveBlock):
 
     If the new_unit_name and the old_unit_name, the later and the colon can be omitted.
     """
-
-    opening: BeginSystem
-    body: ty.Union[Rule, common.Comment]
 
     @property
     def unit_replacements(self) -> ty.Tuple[ty.Tuple[str, str], ...]:

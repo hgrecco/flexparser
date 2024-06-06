@@ -18,15 +18,15 @@ class ImportDefinition(fp.IncludeStatement):
         return self.value
 
     @classmethod
-    def from_string(cls, s: str) -> fp.FromString[ImportDefinition]:
+    def from_string(cls, s: str) -> fp.NullableParsedResult[ImportDefinition]:
         if s.startswith("@import"):
             return ImportDefinition(s[len("@import") :].strip())
         return None
 
 
 @dataclass(frozen=True)
-class EntryBlock(fp.RootBlock):
-    body: fp.Multi[
+class EntryBlock(
+    fp.RootBlock[
         ty.Union[
             common.Comment,
             ImportDefinition,
@@ -39,6 +39,8 @@ class EntryBlock(fp.RootBlock):
             plain.UnitDefinition,
         ]
     ]
+):
+    pass
 
 
 cfg = common.Config()

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import typing as ty
 from dataclasses import dataclass
 
 import flexparser.flexparser as fp
@@ -16,7 +15,7 @@ class BeginDefaults(fp.ParsedStatement):
     """
 
     @classmethod
-    def from_string(cls, s: str) -> fp.FromString[BeginDefaults]:
+    def from_string(cls, s: str) -> fp.NullableParsedResult[BeginDefaults]:
         if s.strip() == "@defaults":
             return cls()
         return None
@@ -32,11 +31,3 @@ class DefaultsDefinition(common.DirectiveBlock):
 
     See Equality and Comment for more parsing related information.
     """
-
-    opening: fp.Single[BeginDefaults]
-    body: fp.Multi[
-        ty.Union[
-            common.Equality,
-            common.Comment,
-        ]
-    ]

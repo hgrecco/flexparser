@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import numbers
 import re
-import typing as ty
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -31,7 +30,7 @@ class _Relation:
     @classmethod
     def _from_string_and_context_sep(
         cls, s: str, config: common.Config, separator: str
-    ) -> fp.FromString[_Relation]:
+    ) -> fp.NullableParsedResult[_Relation]:
         if separator not in s:
             return None
         if ":" not in s:
@@ -77,7 +76,7 @@ class ForwardRelation(fp.ParsedStatement, _Relation):
     @classmethod
     def from_string_and_config(
         cls, s: str, config: common.Config
-    ) -> fp.FromString[ForwardRelation]:
+    ) -> fp.NullableParsedResult[ForwardRelation]:
         return super()._from_string_and_context_sep(s, config, "->")
 
 
@@ -97,7 +96,7 @@ class BidirectionalRelation(fp.ParsedStatement, _Relation):
     @classmethod
     def from_string_and_config(
         cls, s: str, config: common.Config
-    ) -> fp.FromString[BidirectionalRelation]:
+    ) -> fp.NullableParsedResult[BidirectionalRelation]:
         return super()._from_string_and_context_sep(s, config, "<->")
 
 
@@ -119,7 +118,7 @@ class BeginContext(fp.ParsedStatement):
     @classmethod
     def from_string_and_config(
         cls, s: str, config: common.Config
-    ) -> fp.FromString[BeginContext]:
+    ) -> fp.NullableParsedResult[BeginContext]:
         try:
             r = cls._header_re.search(s)
             if r is None:
@@ -181,16 +180,6 @@ class ContextDefinition(common.DirectiveBlock):
             [wavenumber] <-> [length]: 1 / value
         @end
     """
-
-    opening: fp.Single[BeginContext]
-    body: fp.Multi[
-        ty.Union[
-            common.Comment,
-            BidirectionalRelation,
-            ForwardRelation,
-            common.Equality,
-        ]
-    ]
 
     @property
     def variables(self) -> set[str, ...]:
