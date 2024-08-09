@@ -37,7 +37,7 @@ flexparser = ["py.typed"]
 Homepage = "https://github.com/hgrecco/flexparser"
 
 [tool.setuptools]
-packages = ["flexparser"]
+packages = ["flexparser", "flexparser.testsuite"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = "requirements.txt"}
