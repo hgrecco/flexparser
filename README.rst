@@ -329,7 +329,7 @@ base class specially for this purpose.
 
         @classmethod
         def from_string(cls, s):
-            if s.startwith("#include "):
+            if not s.startswith("#include "):
                 return None
 
             value = s[len("#include "):].strip().strip('"')
