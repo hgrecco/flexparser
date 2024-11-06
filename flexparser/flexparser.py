@@ -1,18 +1,18 @@
 """
-    flexparser.flexparser
-    ~~~~~~~~~~~~~~~~~~~~~
+flexparser.flexparser
+~~~~~~~~~~~~~~~~~~~~~
 
-    Classes and functions to create parsers.
+Classes and functions to create parsers.
 
-    The idea is quite simple. You write a class for every type of content
-    (called here ``ParsedStatement``) you need to parse. Each class should
-    have a ``from_string`` constructor. We used extensively the ``typing``
-    module to make the output structure easy to use and less error prone.
+The idea is quite simple. You write a class for every type of content
+(called here ``ParsedStatement``) you need to parse. Each class should
+have a ``from_string`` constructor. We used extensively the ``typing``
+module to make the output structure easy to use and less error prone.
 
-    For more information, take a look at https://github.com/hgrecco/flexparser
+For more information, take a look at https://github.com/hgrecco/flexparser
 
-    :copyright: 2022 by flexparser Authors, see AUTHORS for more details.
-    :license: BSD, see LICENSE for more details.
+:copyright: 2022 by flexparser Authors, see AUTHORS for more details.
+:license: BSD, see LICENSE for more details.
 """
 
 from __future__ import annotations
@@ -75,13 +75,15 @@ else:
     warnings.warn(msg)
 
 
+class HasherAlgorithm(ty.Protocol):
+    def __call__(self, b: bytes, usedforsecurity: bool) -> HasherProtocol: ...
+
+
 class HasherProtocol(ty.Protocol):
     @property
-    def name(self) -> str:
-        ...
+    def name(self) -> str: ...
 
-    def hexdigest(self) -> str:
-        ...
+    def hexdigest(self) -> str: ...
 
 
 class GenericInfo:
@@ -220,33 +222,106 @@ class Statement:
         return self.set_position(line, col, line, col + width)
 
 
-@dataclass(frozen=True)
-class ParsingError(Statement, Exception):
+class ParsingError(Exception):
     """Base class for all parsing exceptions in this package."""
 
+    _statement: Statement | None = None
+
     def __str__(self) -> str:
-        return Statement.__str__(self)
+        cv: str = self.custom_values_str()
+        if cv:
+            cv = ", " + cv
+        return self.__class__.__name__ + str(self.statement)[9:-1] + cv + ")"
+
+    def custom_values_str(self) -> str:
+        return ""
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, ParsingError):
+            return False
+        return self.statement == other.statement
+
+    @property
+    def statement(self) -> Statement:
+        if self._statement is None:
+            self._statement = Statement()
+        return self._statement
+
+    @statement.setter
+    def statement(self, value: Statement):
+        self._statement = value
+
+    @property
+    def is_position_set(self) -> bool:
+        return self.statement.is_position_set
+
+    @property
+    def start_line(self) -> int:
+        return self.statement.start_line
+
+    @property
+    def start_col(self) -> int:
+        return self.statement.start_col
+
+    @property
+    def end_line(self) -> int:
+        return self.statement.end_line
+
+    @property
+    def end_col(self) -> int:
+        return self.statement.end_col
+
+    @property
+    def raw(self) -> Optional[str]:
+        return self.statement.raw
+
+    @property
+    def format_position(self) -> str:
+        return self.statement.format_position
+
+    @property
+    def raw_strip(self) -> Optional[str]:
+        return self.statement.raw_strip
+
+    def get_position(self) -> tuple[int, int, int, int]:
+        return self.statement.get_position()
+
+    def set_position(
+        self: Self, start_line: int, start_col: int, end_line: int, end_col: int
+    ) -> Self:
+        self.statement.set_position(start_line, start_col, end_line, end_col)
+        return self
+
+    def set_raw(self: Self, raw: str) -> Self:
+        self.statement.set_raw(raw)
+        return self
+
+    def set_simple_position(self: Self, line: int, col: int, width: int) -> Self:
+        return self.set_position(line, col, line, col + width)
 
 
-@dataclass(frozen=True)
 class UnknownStatement(ParsingError):
     """A string statement could not bee parsed."""
 
     def __str__(self) -> str:
-        return f"Could not parse '{self.raw}' ({self.format_position})"
+        return (
+            f"Could not parse '{self.statement.raw}' ({self.statement.format_position})"
+        )
 
 
-@dataclass(frozen=True)
 class UnhandledParsingError(ParsingError):
     """Base class for all parsing exceptions in this package."""
 
-    ex: Exception
+    exception: Exception
+
+    def __init__(self, statement: Statement, exception: Exception) -> None:
+        super().__init__(statement)
+        self.exception = exception
 
     def __str__(self) -> str:
-        return f"Unhandled exception while parsing '{self.raw}' ({self.format_position}): {self.ex}"
+        return f"Unhandled exception while parsing '{self.statement.raw}' ({self.statement.format_position}): {self.exception}"
 
 
-@dataclass(frozen=True)
 class UnexpectedEOS(ParsingError):
     """End of file was found within an open block."""
 
@@ -272,12 +347,7 @@ class Hash:
     @classmethod
     def from_bytes(
         cls,
-        algorithm: ty.Callable[
-            [
-                bytes,
-            ],
-            HasherProtocol,
-        ],
+        algorithm: HasherAlgorithm,
         b: bytes,
     ) -> Self:
         hasher = algorithm(b, usedforsecurity=False)
@@ -286,12 +356,7 @@ class Hash:
     @classmethod
     def from_file_pointer(
         cls,
-        algorithm: ty.Callable[
-            [
-                bytes,
-            ],
-            HasherProtocol,
-        ],
+        algorithm: HasherAlgorithm,
         fp: ty.BinaryIO,
     ) -> Self:
         return cls.from_bytes(algorithm, fp.read())
@@ -669,30 +734,24 @@ NullableParsedResult: TypeAlias = Union[T, ParsingError, None]
 
 class ConsumeProtocol(ty.Protocol):
     @property
-    def is_position_set(self) -> bool:
-        ...
+    def is_position_set(self) -> bool: ...
 
     @property
-    def start_line(self) -> int:
-        ...
+    def start_line(self) -> int: ...
 
     @property
-    def start_col(self) -> int:
-        ...
+    def start_col(self) -> int: ...
 
     @property
-    def end_line(self) -> int:
-        ...
+    def end_line(self) -> int: ...
 
     @property
-    def end_col(self) -> int:
-        ...
+    def end_col(self) -> int: ...
 
     @classmethod
     def consume(
         cls, statement_iterator: StatementIterator, config: Any
-    ) -> NullableParsedResult[Self]:
-        ...
+    ) -> NullableParsedResult[Self]: ...
 
 
 @dataclass(frozen=True)
@@ -748,7 +807,7 @@ class ParsedStatement(ty.Generic[CT], Statement):
         try:
             out = cls.from_string_and_config(raw, config)
         except Exception as ex:
-            out = UnhandledParsingError(ex)
+            out = UnhandledParsingError(statement, ex)
 
         if out is None:
             return None
@@ -931,8 +990,9 @@ class Block(ty.Generic[OPST, BPST, CPST, CT], GenericInfo):
             el = c.consume(statement_iterator, config)
             if el is not None:
                 return el
-        unkel = next(statement_iterator)
-        return UnknownStatement.from_statement(unkel)
+        parsing_error = UnknownStatement()
+        parsing_error.statement = next(statement_iterator)
+        return parsing_error
 
     @classmethod
     def consume_closing(
@@ -991,7 +1051,9 @@ class Block(ty.Generic[OPST, BPST, CPST, CT], GenericInfo):
 
     @classmethod
     def on_stop_iteration(cls, config: CT) -> ParsedResult[EOS[CT]]:
-        return UnexpectedEOS()
+        unexpected_eos = UnexpectedEOS()
+        unexpected_eos.statement = Statement()
+        return unexpected_eos
 
 
 @dataclass(frozen=True)
@@ -1139,12 +1201,7 @@ class Parser(ty.Generic[RBT, CT], GenericInfo):
     _prefer_resource_as_file: bool
 
     #: parser algorithm to us. Must be a callable member of hashlib
-    _hasher: ty.Callable[
-        [
-            bytes,
-        ],
-        HasherProtocol,
-    ] = _DEFAULT_HASHER
+    _hasher: HasherAlgorithm = _DEFAULT_HASHER
 
     def __init__(self, config: CT, prefer_resource_as_file: bool = True):
         self._config = config
@@ -1455,8 +1512,8 @@ def _build_parser_class_root_block(
     delimiters: Optional[DelimiterDictT] = None,
 ) -> type[Parser[RootBlock[BPST, CT], CT]]:
     class CustomParser(Parser[spec, spec.specialization()[CT]]):  # type: ignore
-        _delimiters: DelimiterDictT = delimiters or SPLIT_EOL
-        _strip_spaces: bool = strip_spaces
+        _delimiters: DelimiterDictT = delimiters or SPLIT_EOL  # type: ignore
+        _strip_spaces: bool = strip_spaces  # type: ignore
 
     return CustomParser
 

@@ -18,14 +18,24 @@ else:
 from flexparser import flexparser as fp
 
 
-@dataclass(frozen=True)
 class NotAValidIdentifier(fp.ParsingError):
     value: str
 
+    def __init__(self, value: str) -> None:
+        self.value = value
 
-@dataclass(frozen=True)
+    def custom_values_str(self) -> str:
+        return f"value='{self.value}'"
+
+
 class CannotParseToFloat(fp.ParsingError):
     value: str
+
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+    def custom_values_str(self) -> str:
+        return f"value='{self.value}'"
 
 
 @dataclass(frozen=True)

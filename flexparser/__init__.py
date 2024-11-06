@@ -1,17 +1,18 @@
 """
-    flexparser
-    ~~~~~~~~~
+flexparser
+~~~~~~~~~
 
-    Classes and functions to create parsers.
+Classes and functions to create parsers.
 
-    The idea is quite simple. You write a class for every type of content
-    (called here ``ParsedStatement``) you need to parse. Each class should
-    have a ``from_string`` constructor. We used extensively the ``typing``
-    module to make the output structure easy to use and less error prone.
+The idea is quite simple. You write a class for every type of content
+(called here ``ParsedStatement``) you need to parse. Each class should
+have a ``from_string`` constructor. We used extensively the ``typing``
+module to make the output structure easy to use and less error prone.
 
-    :copyright: 2022 by flexparser Authors, see AUTHORS for more details.
-    :license: BSD, see LICENSE for more details.
+:copyright: 2022 by flexparser Authors, see AUTHORS for more details.
+:license: BSD, see LICENSE for more details.
 """
+
 from __future__ import annotations
 
 from importlib.metadata import version

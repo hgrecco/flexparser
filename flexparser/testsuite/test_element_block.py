@@ -60,6 +60,7 @@ def test_block_classes():
 
 def test_formatting():
     obj = EqualFloat.from_string("a = 3.1")
+    assert obj is not None
     assert obj.format_position == "N/A"
     obj.set_simple_position(10, 3, 7)
     assert obj.format_position == "10,3-10,10"
@@ -69,6 +70,7 @@ def test_formatting():
     )
 
     obj = EqualFloat.from_string("%a = 3.1")
+    assert obj is not None
     assert obj.format_position == "N/A"
     obj.set_simple_position(10, 3, 8)
     assert obj.format_position == "10,3-10,11"
