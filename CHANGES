@@ -1,10 +1,10 @@
 flexparser Changelog
 ====================
 
-0.4 (unreleased)
+0.4 (2024-11-06)
 ----------------
 
-- Nothing changed yet.
+- Exceptions are not longer dataclasses.
 
 
 0.3.1 (2024-06-05)
