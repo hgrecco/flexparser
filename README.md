@@ -18,7 +18,12 @@ import flexparser as fp
 
 
 @dataclass(frozen=True)
-class Assigment(fp.ParsedStatement):
+class Config:
+    """Store here any configuration setting that the parser need (if any)."""
+
+
+@dataclass(frozen=True)
+class Assigment(fp.ParsedStatement[Config]):
     """Parses the following `this <- other`"""
 
     lhs: str
@@ -36,7 +41,7 @@ In certain cases, you might want to signal the parser that this class is not app
 
 ```python
 @dataclass(frozen=True)
-class Assigment(fp.ParsedStatement):
+class Assigment(fp.ParsedStatement[Config]):
     """Parses the following `this <- other`"""
 
     lhs: str
@@ -59,7 +64,7 @@ class InvalidIdentifier(fp.ParsingError):
 
 
 @dataclass(frozen=True)
-class Assigment(fp.ParsedStatement):
+class Assigment(fp.ParsedStatement[Config]):
     """Parses the following `this <- other`"""
 
     lhs: str
@@ -107,7 +112,7 @@ Now let's say we want to support equality comparison:
 
 ```python
 @dataclass(frozen=True)
-class EqualityComparison(fp.ParsedStatement):
+class EqualityComparison(fp.ParsedStatement[Config]):
     """Parses the following `this == other`"""
 
     lhs: str
@@ -141,7 +146,7 @@ For multiple source files, **flexparser** provides the `IncludeStatement` base c
 
 ```python
 @dataclass(frozen=True)
-class Include(fp.IncludeStatement):
+class Include(fp.IncludeStatement[Config]):
     """A naive implementation of #include "file" """
 
     value: str
@@ -158,7 +163,7 @@ class Include(fp.IncludeStatement):
         return self.value
 ```
 
-This project was started as part of [Pint](https://github.com/hgrecco/pint), the Python units package.
+This project was started as part of [Pint](https://github.com/hgrecco/pint), the Python units package. Take a look at its parser for a full example [Pint Parser](https://github.com/hgrecco/pint/tree/master/pint/delegates/txt_defparser)
 
 See [AUTHORS](https://github.com/hgrecco/flexparser/blob/main/AUTHORS) for a list of maintainers.
 
