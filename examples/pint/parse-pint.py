@@ -43,45 +43,44 @@ class EntryBlock(
     pass
 
 
-cfg = common.Config()
-p = pathlib.Path("files/default_en.txt")
+if __name__ == "__main__":
+    cfg = common.Config()
+    p = pathlib.Path("files/default_en.txt")
 
-parsed = fp.parse(
-    p,
-    EntryBlock,
-    cfg,
-    delimiters={
-        "#": (
-            fp.DelimiterInclude.SPLIT_BEFORE,
-            fp.DelimiterAction.CAPTURE_NEXT_TIL_EOL,
-        ),
-        **fp.SPLIT_EOL,
-    },
-)
+    parsed = fp.parse(
+        p,
+        EntryBlock,
+        cfg,
+        delimiters={
+            "#": (
+                fp.DelimiterInclude.SPLIT_BEFORE,
+                fp.DelimiterAction.CAPTURE_NEXT_TIL_EOL,
+            ),
+            **fp.SPLIT_EOL,
+        },
+    )
 
+    def pprint(objs, indent=1):
+        TT = "  "
+        print(TT * (indent - 1), objs.opening)
+        for p in objs.body:
+            if isinstance(p, fp.Block):
+                pprint(p, indent + 1)
+            else:
+                print(TT * indent, p)
+        print(TT * (indent - 1), objs.closing)
 
-def pprint(objs, indent=1):
-    TT = "  "
-    print(TT * (indent - 1), objs.opening)
-    for p in objs.body:
-        if isinstance(p, fp.Block):
-            pprint(p, indent + 1)
-        else:
-            print(TT * indent, p)
-    print(TT * (indent - 1), objs.closing)
+    print("Keys")
+    print("----")
+    for k in parsed.keys():
+        print(k)
 
+    print("\n\n----\n\n")
+    for x in parsed.iter_blocks():
+        print(x)
 
-print("Keys")
-print("----")
-for k in parsed.keys():
-    print(k)
-
-print("\n\n----\n\n")
-for x in parsed.iter_blocks():
-    print(x)
-
-print("\n")
-print("Errors")
-print("------")
-for p in parsed.errors():
-    print(p)
+    print("\n")
+    print("Errors")
+    print("------")
+    for p in parsed.errors():
+        print(p)
