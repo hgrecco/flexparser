@@ -22,3 +22,6 @@ tags
 
 # notebook stuff
 *.ipynb_checkpoints*
+# pixi environments
+.pixi
+*.egg-info
