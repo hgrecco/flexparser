@@ -153,7 +153,7 @@ class Include(fp.IncludeStatement[Config]):
 
     @classmethod
     def from_string(cls, s):
-        if s.startwith("#include "):
+        if not s.startwith("#include "):
             return None
         value = s[len("#include ") :].strip().strip('"')
         return cls(value)
