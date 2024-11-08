@@ -2,7 +2,6 @@
 [![License](https://img.shields.io/pypi/l/flexparser.svg)](https://pypi.python.org/pypi/flexparser)
 [![Python Versions](https://img.shields.io/pypi/pyversions/flexparser.svg)](https://pypi.python.org/pypi/flexparser)
 [![CI](https://github.com/hgrecco/flexparser/workflows/CI/badge.svg)](https://github.com/hgrecco/flexparser/actions?query=workflow%3ACI)
-[![LINTER](https://github.com/hgrecco/flexparser/workflows/Lint/badge.svg)](https://github.com/hgrecco/flexparser/actions?query=workflow%3ALint)
 [![Coverage](https://coveralls.io/repos/github/hgrecco/flexparser/badge.svg?branch=main)](https://coveralls.io/github/hgrecco/flexparser?branch=main)
 
 # flexparser
