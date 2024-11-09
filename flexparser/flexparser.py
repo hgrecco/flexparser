@@ -35,6 +35,8 @@ from functools import cached_property
 from importlib import resources
 from typing import Any, Optional, Union, no_type_check
 
+from typing_extensions import Buffer as ReadableBuffer
+
 if sys.version_info >= (3, 10):
     from typing import TypeAlias  # noqa
 else:
@@ -76,7 +78,9 @@ else:
 
 
 class HasherAlgorithm(ty.Protocol):
-    def __call__(self, b: bytes, usedforsecurity: bool) -> HasherProtocol: ...
+    def __call__(
+        self, string: ReadableBuffer = b"", *, usedforsecurity: bool = True
+    ) -> HasherProtocol: ...
 
 
 class HasherProtocol(ty.Protocol):
@@ -84,6 +88,8 @@ class HasherProtocol(ty.Protocol):
     def name(self) -> str: ...
 
     def hexdigest(self) -> str: ...
+
+    def update(self, b: bytes, /): ...
 
 
 class GenericInfo:
@@ -901,7 +907,7 @@ class Block(ty.Generic[OPST, BPST, CPST, CT], GenericInfo):
 
     def iter_blocks(
         self,
-    ) -> ty.Generator[ParsedResult[Union[OPST, BPST, CPST]], None, None]:
+    ) -> ty.Generator[ParsedResult[Union[OPST, BPST, CPST, EOS[CT]]], None, None]:
         # raise RuntimeError("Is this used?")
         yield self.opening
         yield from self.body
@@ -911,13 +917,11 @@ class Block(ty.Generic[OPST, BPST, CPST, CT], GenericInfo):
     # Convenience methods to iterate parsed statements
     ###################################################
 
-    _ElementT = ty.TypeVar("_ElementT", bound=Statement)
-
     def filter_by(
-        self, klass1: type[_ElementT], *klass: type[_ElementT]
-    ) -> ty.Generator[_ElementT, None, None]:
+        self, klass1: type[T], *klass: type[T]
+    ) -> ty.Generator[T, None, None]:
         """Yield elements of a given class or classes."""
-        yield from (el for el in self if isinstance(el, (klass1,) + klass))  # type: ignore[misc]
+        yield from (el for el in self if isinstance(el, (klass1,) + klass))
 
     @cached_property
     def errors(self) -> tuple[ParsingError, ...]:
@@ -1103,9 +1107,7 @@ class EOS(ty.Generic[CT], ParsedStatement[CT]):
     """End of sequence."""
 
     @classmethod
-    def from_string_and_config(
-        cls: type[PST], s: str, config: CT
-    ) -> NullableParsedResult[PST]:
+    def from_string_and_config(cls, s: str, config: CT) -> NullableParsedResult[Self]:
         return cls()
 
 
