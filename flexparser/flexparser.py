@@ -98,24 +98,27 @@ class GenericInfo:
     ] = None
 
     @staticmethod
-    def _summarize(d: dict[ty.TypeVar, type]) -> dict[ty.TypeVar, type]:
-        d = d.copy()
-        while True:
-            for k, v in d.items():
-                if isinstance(v, ty.TypeVar):
-                    d[k] = d[v]
-                    break
+    def _summarize(d: dict[ty.TypeVar, type | ty.TypeVar]) -> dict[ty.TypeVar, type]:
+        out: dict[ty.TypeVar, type] = {}
+        pending = collections.deque(d.items())
+        while pending:
+            k, v = pending.popleft()
+            if isinstance(v, ty.TypeVar):
+                if v in out:
+                    out[k] = out[v]
+                else:
+                    pending.append((k, v))
             else:
-                return d
+                out[k] = v
 
-            del d[v]
+        return out
 
     @classmethod
-    def _specialization(cls) -> dict[ty.TypeVar, type]:
+    def _specialization(cls) -> dict[ty.TypeVar, type | ty.TypeVar]:
         if cls._specialized is None:
             return dict()
 
-        out: dict[ty.TypeVar, type] = {}
+        out: dict[ty.TypeVar, type | ty.TypeVar] = {}
         specialized = cls._specialized[cls]
 
         if specialized is None:
