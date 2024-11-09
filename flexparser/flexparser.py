@@ -35,8 +35,6 @@ from functools import cached_property
 from importlib import resources
 from typing import Any, Optional, Union, no_type_check
 
-from typing_extensions import Buffer as ReadableBuffer
-
 if sys.version_info >= (3, 10):
     from typing import TypeAlias  # noqa
 else:
@@ -47,6 +45,12 @@ if sys.version_info >= (3, 11):
     from typing import Self  # noqa
 else:
     from typing_extensions import Self  # noqa
+
+
+if sys.version_info >= (3, 12):
+    from collections.abc import Buffer  # noqa
+else:
+    from typing_extensions import Buffer  # noqa
 
 
 _LOGGER = logging.getLogger("flexparser")
@@ -79,7 +83,7 @@ else:
 
 class HasherAlgorithm(ty.Protocol):
     def __call__(
-        self, string: ReadableBuffer = b"", *, usedforsecurity: bool = True
+        self, string: Buffer = b"", *, usedforsecurity: bool = True
     ) -> HasherProtocol: ...
 
 
